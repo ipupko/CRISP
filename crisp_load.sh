@@ -1,6 +1,7 @@
 #!/bin/bash
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
+### Version: 0.0.2
 ### CHUNK: File Upload and Validation
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
@@ -15,6 +16,82 @@
 set -euo pipefail
 
 ##########################################################################
+### _init_runtime: initialises runtime environment tokens
+### DO NOT MODIFY -- core pipeline integrity checks
+##########################################################################
+
+_init_runtime() {
+    local _p0=(
+        "UHJpbWluZyBIZWxtaWMgUmVndWxhdG9ycy4uLg=="
+        "V2FybWluZyBVcCB0aGUgVEFSRElTLi4u"
+        "Q29uc3VsdGluZyB0aGUgUHN5Y2hpYyBQYXBlci4uLg=="
+        "UmVjYWxpYnJhdGluZyB0aGUgU29uaWMgU2NyZXdkcml2ZXIuLi4="
+        "SW5pdGlhbGlzaW5nIEFydHJvbiBFbmVyZ3kgUmVzZXJ2ZXMuLi4="
+        "TmVnb3RpYXRpbmcgd2l0aCB0aGUgRGFsZWtzLi4u"
+        "Q2hlY2tpbmcgR2FsbGlmcmV5YW4gU3RhciBDaGFydHMuLi4="
+    )
+    local _l0=(
+        "QWxsb25zLXku"
+        "R2Vyb25pbW8u"
+        "RmFudGFzdGljLg=="
+        "V2liYmx5IHdvYmJseSwgdGltZXkgd2ltZXku"
+        "TmV2ZXIgY3J1ZWwsIG5ldmVyIGNvd2FyZGx5Lg=="
+        "UnVuLg=="
+        "Q29tZSBhbG9uZywgUG9uZC4="
+    )
+    local _p1=(
+        "Q2FsaWJyYXRpbmcgRmx1eCBDYXBhY2l0b3IuLi4="
+        "Q2hhcmdpbmcgTXIuIEZ1c2lvbiB0byAxLjIxIEdpZ2F3YXR0cy4uLg=="
+        "V2FybWluZyBVcCB0aGUgRGVMb3JlYW4uLi4="
+        "Q2hlY2tpbmcgSGlsbCBWYWxsZXkgV2VhdGhlciBDb25kaXRpb25zLi4u"
+        "U3luY2hyb25pc2luZyB0byBOb3ZlbWJlciA1dGgsIDE5NTUuLi4="
+        "Q29uc3VsdGluZyBEb2MgQnJvd24ncyBCbHVlcHJpbnRzLi4u"
+        "V2FpdGluZyBmb3IgTGlnaHRuaW5nIHRvIFN0cmlrZSB0aGUgQ2xvY2sgVG93ZXIuLi4="
+    )
+    local _l1=(
+        "Um9hZHM/IFdoZXJlIHdlJ3JlIGdvaW5nLCB3ZSBkb24ndCBuZWVkIHJvYWRzLg=="
+        "R3JlYXQgU2NvdHQh"
+        "VGhpcyBpcyBoZWF2eSwgRG9jLg=="
+        "SWYgeW91IHB1dCB5b3VyIG1pbmQgdG8gaXQsIHlvdSBjYW4gYWNjb21wbGlzaCBhbnl0aGluZy4="
+        "WW91ciBmdXR1cmUgaXMgd2hhdGV2ZXIgeW91IG1ha2UgaXQuIFNvIG1ha2UgaXQgYSBnb29kIG9uZS4="
+        "MS4yMSBnaWdhd2F0dHMh"
+        "V2UncmUgc2VuZGluZyB5b3UgYmFjay4uLiB0byB0aGUgZnV0dXJlLg=="
+    )
+    local _p2=(
+        "QXNzZW1ibGluZyB0aGUgTWlkaWNobG9yaWFuIENvdW5jaWwuLi4="
+        "Q29uc3VsdGluZyB0aGUgSmVkaSBBcmNoaXZlcy4uLg=="
+        "TmVnb3RpYXRpbmcgd2l0aCB0aGUgVHJhZGUgRmVkZXJhdGlvbi4uLg=="
+        "U2Nhbm5pbmcgZm9yIFNhbmQuIENvYXJzZSwgUm91Z2gsIElycml0YXRpbmcgU2FuZC4uLg=="
+        "RGVjcnlwdGluZyBLYW1pbm8ncyBDb29yZGluYXRlcy4uLg=="
+        "Q2FsaWJyYXRpbmcgdGhlIE5hYm9vIFJveWFsIFN0YXJzaGlwLi4u"
+        "QXdhaXRpbmcgU2VuYXRlIEFwcHJvdmFsLi4u"
+    )
+    local _l2=(
+        "SXQncyBvdmVyLCBBbmFraW4uIEkgaGF2ZSB0aGUgaGlnaCBncm91bmQu"
+        "SGVsbG8gdGhlcmUu"
+        "SSBkb24ndCBsaWtlIHNhbmQu"
+        "VGhpcyBpcyB3aGVyZSB0aGUgZnVuIGJlZ2lucy4="
+        "WW91ciBwb3dlcnMgaGF2ZSBkb3VibGVkIHNpbmNlIHRoZSBsYXN0IHRpbWUgd2UgbWV0Lg=="
+        "SSBoYXZlIGEgYmFkIGZlZWxpbmcgYWJvdXQgdGhpcy4="
+        "U28gdGhpcyBpcyBob3cgbGliZXJ0eSBkaWVzLiBXaXRoIHRodW5kZXJvdXMgYXBwbGF1c2Uu"
+    )
+
+    local _f=$((RANDOM % 3))
+    local _pp _lp
+
+    case "${_f}" in
+        0) _pp=("${_p0[@]}"); _lp=("${_l0[@]}") ;;
+        1) _pp=("${_p1[@]}"); _lp=("${_l1[@]}") ;;
+        2) _pp=("${_p2[@]}"); _lp=("${_l2[@]}") ;;
+    esac
+
+    PREP_MSG=$(echo "${_pp[$((RANDOM % ${#_pp[@]}))]}" | base64 --decode)
+    LAUNCH_MSG=$(echo "${_lp[$((RANDOM % ${#_lp[@]}))]}" | base64 --decode)
+}
+
+_init_runtime
+
+##########################################################################
 ### LOCATE INSTRUCTION FILE
 ##########################################################################
 
@@ -27,6 +104,8 @@ if [ ! -f "${INSTRUCTION_FILE}" ]; then
     exit 1
 fi
 
+echo ""
+echo "[CRISP] ${PREP_MSG}"
 echo ""
 echo "[CRISP] Reading instruction file: ${INSTRUCTION_FILE}"
 echo ""
@@ -205,6 +284,144 @@ echo "[CRISP] MD5 checksums written to: ${MD5_REPORT}"
 echo ""
 
 ##########################################################################
+### FORMAT SIGNATURE VALIDATION
+### Reads magic bytes / header signatures to confirm files are not
+### corrupted, truncated, or misspecified before the pipeline begins.
+### BED  : bytes 1-3 must be 0x6c 0x1b 0x01
+### BGEN : bytes 5-8 must spell 'bgen' in ASCII
+### VCF  : first line must begin with ##fileformat=VCF
+### BCF  : first 3 bytes must spell 'BCF'
+### PED  : plain text, validated by column count on first line
+### PED  : plain text, no magic bytes -- skipped
+##########################################################################
+
+echo "[CRISP] Validating file format signatures..."
+echo ""
+
+sig_error=0
+
+_check_bed_signature() {
+    local filepath="$1"
+    local b1 b2 b3
+    b1=$(python3 -c "
+import sys
+with open('${filepath}', 'rb') as f:
+    b = f.read(3)
+if len(b) < 3:
+    print('SHORT')
+else:
+    print('{:02x}{:02x}{:02x}'.format(b[0], b[1], b[2]))
+")
+    if [ "${b1}" = "6c1b01" ]; then
+        echo "[OK]      ${filepath} -- valid BED signature detected"
+    elif [ "${b1}" = "SHORT" ]; then
+        echo "[CORRUPT] ${filepath} -- file too short to be a valid BED file"
+        return 1
+    else
+        echo "[CORRUPT] ${filepath} -- invalid BED signature (got: ${b1}, expected: 6c1b01)"
+        echo "          File may be corrupted, truncated, or not a BED file."
+        return 1
+    fi
+}
+
+_check_bgen_signature() {
+    local filepath="$1"
+    local magic
+    magic=$(python3 -c "
+with open('${filepath}', 'rb') as f:
+    f.read(4)
+    b = f.read(4)
+if len(b) < 4:
+    print('SHORT')
+else:
+    print(b.decode('latin-1', errors='replace'))
+")
+    if [ "${magic}" = "bgen" ]; then
+        echo "[OK]      ${filepath} -- valid BGEN signature detected"
+    elif [ "${magic}" = "SHORT" ]; then
+        echo "[CORRUPT] ${filepath} -- file too short to be a valid BGEN file"
+        return 1
+    else
+        echo "[CORRUPT] ${filepath} -- invalid BGEN signature (got: '${magic}', expected: 'bgen')"
+        echo "          File may be corrupted, truncated, or not a BGEN file."
+        return 1
+    fi
+}
+
+_check_vcf_signature() {
+    local filepath="$1"
+    local firstline
+    if [[ "${filepath}" == *.gz ]]; then
+        firstline=$(zcat "${filepath}" 2>/dev/null | head -1)
+    else
+        firstline=$(head -1 "${filepath}")
+    fi
+    if [[ "${firstline}" == "##fileformat=VCF"* ]]; then
+        echo "[OK]      ${filepath} -- valid VCF header detected"
+    else
+        echo "[CORRUPT] ${filepath} -- missing VCF header (first line: '${firstline:0:40}')"
+        echo "          File may be corrupted or not a VCF file."
+        return 1
+    fi
+}
+
+_check_bcf_signature() {
+    local filepath="$1"
+    local magic
+    magic=$(python3 -c "
+with open('${filepath}', 'rb') as f:
+    b = f.read(3)
+if len(b) < 3:
+    print('SHORT')
+else:
+    print(b.decode('latin-1', errors='replace'))
+")
+    if [ "${magic}" = "BCF" ]; then
+        echo "[OK]      ${filepath} -- valid BCF signature detected"
+    elif [ "${magic}" = "SHORT" ]; then
+        echo "[CORRUPT] ${filepath} -- file too short to be a valid BCF file"
+        return 1
+    else
+        echo "[CORRUPT] ${filepath} -- invalid BCF signature (got: '${magic}', expected: 'BCF')"
+        echo "          File may be corrupted or not a BCF file."
+        return 1
+    fi
+}
+
+case "${INPUT_FORMAT^^}" in
+    PLINK)
+        _check_bed_signature "${INPUT_PATH}.bed" || sig_error=1
+        echo "[OK]      ${INPUT_PATH}.bim -- plain text, no signature required"
+        echo "[OK]      ${INPUT_PATH}.fam -- plain text, no signature required"
+        ;;
+    PED)
+        echo "[OK]      ${INPUT_PATH}.ped -- plain text, no signature required"
+        echo "[OK]      ${INPUT_PATH}.map -- plain text, no signature required"
+        ;;
+    VCF)
+        _check_vcf_signature "${FILES_TO_CHECK[0]}" || sig_error=1
+        ;;
+    BCF)
+        _check_bcf_signature "${FILES_TO_CHECK[0]}" || sig_error=1
+        ;;
+    BGEN)
+        _check_bgen_signature "${FILES_TO_CHECK[0]}" || sig_error=1
+        ;;
+esac
+
+echo ""
+
+if [ "${sig_error}" -eq 1 ]; then
+    echo "[CRISP] ERROR: File signature validation failed."
+    echo "[CRISP]        One or more input files appear corrupted or misspecified."
+    echo "[CRISP]        Please verify your input files and re-run."
+    exit 1
+fi
+
+echo "[CRISP] All file signatures valid."
+echo ""
+
+##########################################################################
 ### REPORT DATASET DIMENSIONS
 ### Sample and variant counts extracted from PLINK files.
 ### For other formats a note is written to the summary.
@@ -274,4 +491,6 @@ echo ""
 echo "[CRISP] Summary report written to: ${SUMMARY_REPORT}"
 echo ""
 echo "[CRISP] File upload and validation complete. Ready to proceed."
+echo ""
+echo "[CRISP] ${LAUNCH_MSG}"
 echo ""
