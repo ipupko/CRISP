@@ -1,0 +1,47 @@
+# =============================================================
+# GENETIC DATA PROCESSING PIPELINE - INSTRUCTION FILE
+# =============================================================
+# Lines beginning with # are comments and are ignored.
+# All fields are optional unless marked REQUIRED.
+# Unspecified thresholds fall back to sensible defaults.
+# =============================================================
+
+# --- INPUT (REQUIRED) ----------------------------------------
+INPUT_FORMAT    = PLINK          # Options: PLINK | PED | VCF | BCF | BGEN
+INPUT_PATH      = /path/to/data  # Prefix for PLINK/PED (no extension)
+                                 # Full file path for VCF, BCF, BGEN
+OUTPUT_DIR      = ./results
+PROJECT_NAME    = my_project
+
+# --- STEPS TO RUN --------------------------------------------
+# Set to YES or NO. All default to YES.
+RUN_QC          = YES
+RUN_ANEUPLOIDY  = YES
+RUN_SEX_CHECK   = YES
+RUN_PCA         = YES
+RUN_AMEND       = YES
+
+# --- SAMPLE QC -----------------------------------------------
+MIND            = 0.05           # Default: 0.05  | Max missing rate per sample
+
+# --- VARIANT QC ----------------------------------------------
+GENO            = 0.05           # Default: 0.05  | Max missing rate per variant
+MAF             = 0.01           # Default: 0.01  | Minor allele frequency floor
+HWE             = 1e-6           # Default: 1e-6  | HWE p-value threshold
+REMOVE_MONO     = YES            # Default: YES   | Remove monomorphic SNPs
+
+# --- HETEROZYGOSITY / HOMOZYGOSITY ---------------------------
+HET_SD          = 3              # Default: 3     | SD from mean to flag outliers
+HOM_Z_HIGH      = 3              # Default: 3     | Z-score upper threshold (excess ROH)
+HOM_Z_LOW       = -2             # Default: -2    | Z-score lower threshold (high het)
+XXX_F_THRESHOLD = -0.15          # Default: -0.15 | F-stat floor for XXX suspicion
+
+# --- FORMAT CONVERSION ---------------------------------------
+KEEP_INTERMEDIATE = YES          # Default: YES | Keep intermediate files between steps
+KEEP_CHR          = 1-22,X,Y,XY,MT  # Default: standard chromosomes only
+
+# --- TOOL PATHS ----------------------------------------------
+# Defaults assume plink/plink2 are on $PATH (via module load)
+PLINK1_PATH     = plink
+PLINK2_PATH     = plink2
+RSCRIPT_PATH    = Rscript
