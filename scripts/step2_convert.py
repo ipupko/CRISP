@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """
-=============================================================
 CRISP - Comprehensive Robust Integrated SNP Processing
 Step 2: Format Conversion
-=============================================================
-Author  : Igor Pupko
-GitHub  : https://github.com/ipupko/CRISP
-=============================================================
+Version: 0.2.0
+
+Developed by Igor Pupko
+https://github.com/ipupko/CRISP
+Date Updated : 03/05/2026
+
 Converts input genotype files to PLINK BED/BIM/FAM format.
-Supported input formats: PLINK (pass-through), PED/MAP, VCF,
-BCF, BGEN.
+Supported input formats: PLINK (pass-through), PED/MAP, VCF, BCF, BGEN.
 
-Chromosome cleaning is applied post-conversion:
-retains chromosomes 1-22, X, Y, XY, MT only.
-Multiallelic variants excluded via --max-alleles 2.
+Chromosome cleaning retains 1-22, X, Y, XY, MT only.
+Multiallelic variants excluded via --max-alleles 2 (VCF and BGEN).
+Intermediate files optionally retained via KEEP_INTERMEDIATE.
 
-Intermediate files optionally retained based on instruction
-file parameter KEEP_INTERMEDIATE.
-=============================================================
+Usage:
+    python3 step2_convert.py --config <parsed_config.json>
 """
 
 import argparse
@@ -30,13 +29,10 @@ import hashlib
 
 
 # ─────────────────────────────────────────────
-# VALID CHROMOSOMES TO RETAIN
+# VALID CHROMOSOMES
 # ─────────────────────────────────────────────
 VALID_CHR = [str(i) for i in range(1, 23)] + ["X", "Y", "XY", "MT"]
-
-# Also handle chr-prefixed versions
 VALID_CHR_PREFIXED = ["chr" + c for c in VALID_CHR]
-
 ALL_VALID = set(VALID_CHR + VALID_CHR_PREFIXED)
 
 
@@ -69,10 +65,6 @@ def md5_file(filepath, chunk_size=1024 * 1024):
 # RUN SHELL COMMAND
 # ─────────────────────────────────────────────
 def run_cmd(cmd, log_file=None):
-    """
-    Run a shell command. Stream output to log file if provided.
-    Returns exit code.
-    """
     log(f"Running: {' '.join(cmd)}")
     with open(log_file, "w") if log_file else open(os.devnull, "w") as lf:
         result = subprocess.run(
@@ -88,13 +80,10 @@ def run_cmd(cmd, log_file=None):
 # COUNT BIM VARIANTS AND CHROMOSOMES
 # ─────────────────────────────────────────────
 def count_bim(bim_path):
-    """
-    Returns total variant count and per-chromosome counts from a .bim file.
-    Also identifies non-standard chromosome codes.
-    """
-    chr_counts = {}
+    """Read .bim and return total count, per-chr counts, and non-standard chrs."""
+    chr_counts   = {}
     non_standard = {}
-    total = 0
+    total        = 0
 
     with open(bim_path) as f:
         for line in f:
@@ -114,11 +103,7 @@ def count_bim(bim_path):
 # WRITE CHROMOSOME EXTRACT LIST
 # ─────────────────────────────────────────────
 def write_chr_list(bim_path, out_path):
-    """
-    Write a list of variant IDs to retain -- only those on
-    standard chromosomes 1-22, X, Y, XY, MT.
-    Returns count of retained and excluded variants.
-    """
+    """Write variant IDs on standard chromosomes only."""
     retained = []
     excluded = 0
 
@@ -127,7 +112,7 @@ def write_chr_list(bim_path, out_path):
             parts = line.strip().split()
             if not parts:
                 continue
-            chrom = parts[0]
+            chrom  = parts[0]
             var_id = parts[1]
             if chrom in ALL_VALID:
                 retained.append(var_id)
@@ -146,11 +131,11 @@ def write_chr_list(bim_path, out_path):
 # ─────────────────────────────────────────────
 
 def convert_ped(config, converted_dir, log_dir):
-    """PED/MAP → BED/BIM/FAM using PLINK 1.9"""
-    plink1 = config.get("PLINK1_PATH", "plink")
-    prefix = config["INPUT_PATH"]
+    """PED/MAP to BED/BIM/FAM via PLINK 1.9."""
+    plink1     = config.get("PLINK1_PATH", "plink")
+    prefix     = config["INPUT_PATH"]
     out_prefix = os.path.join(converted_dir, config["PROJECT_NAME"] + "_converted")
-    log_file = os.path.join(log_dir, "step2_ped_conversion.log")
+    log_file   = os.path.join(log_dir, "step2_ped_conversion.log")
 
     cmd = [
         plink1,
@@ -169,15 +154,27 @@ def convert_ped(config, converted_dir, log_dir):
 
 
 def convert_vcf(config, converted_dir, log_dir):
-    """VCF/BCF → BED/BIM/FAM using PLINK 2"""
-    plink2  = config.get("PLINK2_PATH", "plink2")
-    fmt     = config["INPUT_FORMAT"].upper()
-    path    = config["INPUT_PATH"]
+    """VCF or BCF to BED/BIM/FAM via PLINK 2."""
+    plink2     = config.get("PLINK2_PATH", "plink2")
+    fmt        = config["INPUT_FORMAT"].upper()
+    path       = config["INPUT_PATH"]
     out_prefix = os.path.join(converted_dir, config["PROJECT_NAME"] + "_converted")
     log_file   = os.path.join(log_dir, "step2_vcf_conversion.log")
 
-    # Resolve actual file path
-    vcf_file = path if os.path.isfile(path) else path + (".vcf.gz" if fmt == "VCF" else ".bcf")
+    # try plain path first, then common extensions
+    if fmt == "VCF":
+        candidates = [path, path + ".vcf.gz", path + ".vcf"]
+    else:
+        candidates = [path, path + ".bcf"]
+
+    vcf_file = next((c for c in candidates if os.path.isfile(c)), None)
+
+    if vcf_file is None:
+        abort(
+            f"No {'VCF' if fmt == 'VCF' else 'BCF'} file found.\n"
+            f"  Tried:\n" +
+            "\n".join(f"    {c}" for c in candidates)
+        )
 
     flag = "--vcf" if fmt == "VCF" else "--bcf"
 
@@ -198,16 +195,17 @@ def convert_vcf(config, converted_dir, log_dir):
 
 
 def convert_bgen(config, converted_dir, log_dir):
-    """BGEN → BED/BIM/FAM using PLINK 2"""
-    plink2  = config.get("PLINK2_PATH", "plink2")
-    path    = config["INPUT_PATH"]
+    """BGEN to BED/BIM/FAM via PLINK 2."""
+    plink2     = config.get("PLINK2_PATH", "plink2")
+    path       = config["INPUT_PATH"]
     out_prefix = os.path.join(converted_dir, config["PROJECT_NAME"] + "_converted")
     log_file   = os.path.join(log_dir, "step2_bgen_conversion.log")
 
-    # Resolve BGEN file
     bgen_file = path if os.path.isfile(path) else path + ".bgen"
+    if not os.path.isfile(bgen_file):
+        abort(f"No BGEN file found at: {path}")
 
-    # Resolve companion .sample file
+    # need companion .sample file
     sample_file = os.path.splitext(bgen_file)[0] + ".sample"
     if not os.path.isfile(sample_file):
         abort(f"BGEN .sample file not found: {sample_file}")
@@ -231,16 +229,13 @@ def convert_bgen(config, converted_dir, log_dir):
 
 def passthrough_plink(config, converted_dir, log_dir):
     """
-    BED input -- no conversion needed.
-    Symlink or copy to converted dir so downstream steps
-    always point to the same location regardless of format.
+    BED input, create a working copy so all downstream steps
+    always reference the same output directory regardless of format.
     """
-    plink1  = config.get("PLINK1_PATH", "plink")
-    prefix  = config["INPUT_PATH"]
+    plink1     = config.get("PLINK1_PATH", "plink")
+    prefix     = config["INPUT_PATH"]
     out_prefix = os.path.join(converted_dir, config["PROJECT_NAME"] + "_converted")
     log_file   = os.path.join(log_dir, "step2_plink_passthrough.log")
-
-    log("Input is already BED/BIM/FAM. Creating working copy in converted dir...")
 
     cmd = [
         plink1,
@@ -262,34 +257,32 @@ def passthrough_plink(config, converted_dir, log_dir):
 # ─────────────────────────────────────────────
 def clean_chromosomes(config, converted_prefix, converted_dir, log_dir):
     """
-    Extract only standard chromosomes from converted BED.
-    Writes a variant extract list and re-runs PLINK to filter.
+    Drop any non-standard chromosome codes.
+    Returns (clean_prefix, variants_after, excluded_count, non_standard_dict).
+    If nothing to clean, returns converted_prefix unchanged.
     """
     plink1 = config.get("PLINK1_PATH", "plink")
     bim    = converted_prefix + ".bim"
 
-    log("Analysing chromosome composition...")
+    log("Checking chromosome composition...")
     total, chr_counts, non_standard = count_bim(bim)
 
-    log(f"  Total variants before chr cleaning : {total:,}")
-    log(f"  Non-standard chromosomes found     : {len(non_standard)}")
+    log(f"  Total variants : {total:,}")
 
     if non_standard:
         for chrom, count in sorted(non_standard.items()):
-            warn(f"  Non-standard chr '{chrom}': {count:,} variants -- will be excluded")
+            warn(f"  Non-standard chr '{chrom}': {count:,} variants will be excluded")
+    else:
+        log("  All chromosomes are standard. Skipping chr cleaning.")
+        return converted_prefix, total, 0, {}
 
-    # Write extract list
+    # build extract list and re-run PLINK
     extract_list = os.path.join(converted_dir, "chr_extract_list.txt")
     retained, excluded = write_chr_list(bim, extract_list)
 
-    log(f"  Variants retained after chr cleaning : {retained:,}")
-    log(f"  Variants excluded (non-standard chr) : {excluded:,}")
+    log(f"  Variants retained : {retained:,}")
+    log(f"  Variants excluded : {excluded:,}")
 
-    if excluded == 0:
-        log("  No non-standard chromosomes found. Skipping chr cleaning step.")
-        return converted_prefix, total, 0, {}
-
-    # Re-run PLINK with extract list
     clean_prefix = converted_prefix + "_chrclean"
     log_file     = os.path.join(log_dir, "step2_chr_cleaning.log")
 
@@ -312,12 +305,10 @@ def clean_chromosomes(config, converted_prefix, converted_dir, log_dir):
 # CLEANUP INTERMEDIATE FILES
 # ─────────────────────────────────────────────
 def cleanup_intermediate(converted_prefix, keep):
-    """Remove intermediate converted files if KEEP_INTERMEDIATE = NO"""
     if keep.upper() == "YES":
-        log("KEEP_INTERMEDIATE = YES -- intermediate files retained.")
+        log("KEEP_INTERMEDIATE = YES, intermediate files retained.")
         return
-
-    log("KEEP_INTERMEDIATE = NO -- removing intermediate files...")
+    log("KEEP_INTERMEDIATE = NO, removing intermediate files...")
     for ext in [".bed", ".bim", ".fam", ".log", ".nosex"]:
         f = converted_prefix + ext
         if os.path.isfile(f):
@@ -332,13 +323,14 @@ def write_report(config, fmt, converted_prefix, clean_prefix,
                  variants_before, variants_after, excluded_chr,
                  non_standard, output_dir):
 
-    project    = config["PROJECT_NAME"]
-    run_time   = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    project     = config["PROJECT_NAME"]
+    run_time    = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     report_path = os.path.join(output_dir, f"{project}_step2_conversion_report.txt")
     json_path   = os.path.join(output_dir, f"{project}_step2_conversion_report.json")
-    separator   = "=" * 65
+    sep         = "=" * 65
+    dash        = "-" * 65
 
-    # Get output file MD5s
+    # output file MD5s
     file_records = []
     for ext in [".bed", ".bim", ".fam"]:
         fpath = clean_prefix + ext
@@ -353,50 +345,39 @@ def write_report(config, fmt, converted_prefix, clean_prefix,
             })
 
     with open(report_path, "w") as out:
-        out.write(f"{separator}\n")
-        out.write(f"  CRISP -- STEP 2 CONVERSION REPORT\n")
+        out.write(f"{sep}\n")
+        out.write(f"  CRISP: STEP 2 CONVERSION REPORT\n")
         out.write(f"  Comprehensive Robust Integrated SNP Processing\n")
-        out.write(f"{separator}\n")
+        out.write(f"{sep}\n")
         out.write(f"  Project      : {project}\n")
         out.write(f"  Date         : {run_time}\n")
         out.write(f"  Input format : {fmt}\n")
         out.write(f"  Input path   : {config['INPUT_PATH']}\n")
-        out.write(f"{separator}\n\n")
-
-        out.write(f"CONVERSION\n")
-        out.write(f"{'-' * 65}\n")
-        out.write(f"  Tool used    : {'PLINK 1.9' if fmt in ('PED', 'PLINK') else 'PLINK 2'}\n")
-        out.write(f"  Output dir   : {os.path.dirname(clean_prefix)}\n")
-        out.write(f"  Output prefix: {os.path.basename(clean_prefix)}\n\n")
-
-        out.write(f"VARIANT COUNTS\n")
-        out.write(f"{'-' * 65}\n")
-        out.write(f"  Variants before conversion   : {variants_before:,}\n")
+        out.write(f"{dash}\n")
+        out.write(f"  CONVERSION\n")
+        tool = "PLINK 1.9" if fmt in ("PED", "PLINK") else "PLINK 2"
+        out.write(f"  Tool          : {tool}\n")
+        out.write(f"  Output prefix : {os.path.basename(clean_prefix)}\n")
+        out.write(f"{dash}\n")
+        out.write(f"  VARIANT COUNTS\n")
+        out.write(f"  Variants before chr cleaning : {variants_before:,}\n")
         out.write(f"  Variants after chr cleaning  : {variants_after:,}\n")
-        out.write(f"  Variants excluded            : {excluded_chr:,}\n\n")
-
+        out.write(f"  Variants excluded            : {excluded_chr:,}\n")
         if non_standard:
-            out.write(f"NON-STANDARD CHROMOSOMES EXCLUDED\n")
-            out.write(f"{'-' * 65}\n")
+            out.write(f"{dash}\n")
+            out.write(f"  NON-STANDARD CHROMOSOMES EXCLUDED\n")
             for chrom, count in sorted(non_standard.items()):
                 out.write(f"  chr '{chrom}' : {count:,} variants excluded\n")
-            out.write("\n")
-
-        out.write(f"OUTPUT FILES\n")
-        out.write(f"{'-' * 65}\n")
+        out.write(f"{dash}\n")
+        out.write(f"  OUTPUT FILES\n")
         for rec in file_records:
-            out.write(f"  File  : {rec['filename']}\n")
-            out.write(f"  Size  : {rec['size_mb']} MB\n")
-            out.write(f"  MD5   : {rec['md5']}\n\n")
-
-        out.write(f"INTERMEDIATE FILES\n")
-        out.write(f"{'-' * 65}\n")
-        keep = config.get("KEEP_INTERMEDIATE", "YES")
-        out.write(f"  KEEP_INTERMEDIATE : {keep}\n\n")
-
-        out.write(f"{separator}\n")
+            out.write(f"  {rec['filename']}\n")
+            out.write(f"  Size : {rec['size_mb']} MB  |  MD5 : {rec['md5']}\n\n")
+        out.write(f"{dash}\n")
+        out.write(f"  KEEP_INTERMEDIATE : {config.get('KEEP_INTERMEDIATE', 'YES')}\n")
+        out.write(f"{sep}\n")
         out.write(f"  END OF REPORT\n")
-        out.write(f"{separator}\n")
+        out.write(f"{sep}\n")
 
     # JSON export for downstream steps
     json_data = {
@@ -430,7 +411,6 @@ def main():
                         help="Path to parsed config JSON from Step 1")
     args = parser.parse_args()
 
-    # Load parsed config from Step 1
     if not os.path.isfile(args.config):
         abort(f"Config JSON not found: {args.config}")
 
@@ -445,13 +425,12 @@ def main():
     log(f"Input format : {fmt}")
     log(f"Input path   : {config['INPUT_PATH']}")
 
-    # Set up directories
     converted_dir = os.path.join(output_dir, "step2_converted")
     log_dir       = os.path.join(output_dir, "logs")
     os.makedirs(converted_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 
-    # ── CONVERSION ──────────────────────────────
+    # conversion
     log("Starting format conversion...")
 
     if fmt == "PLINK":
@@ -467,23 +446,26 @@ def main():
 
     log("Conversion complete.")
 
-    # ── CHROMOSOME CLEANING ──────────────────────
+    # chromosome cleaning
     log("Starting chromosome cleaning...")
     clean_prefix, variants_after, excluded_chr, non_standard = clean_chromosomes(
         config, converted_prefix, converted_dir, log_dir
     )
 
-    # Count variants before cleaning from original converted BIM
-    bim_before = converted_prefix + ".bim"
+    # count before-cleaning variants from the pre-clean BIM
+    bim_before      = converted_prefix + ".bim"
     variants_before = sum(1 for line in open(bim_before) if line.strip())
 
     log("Chromosome cleaning complete.")
 
-    # ── CLEANUP INTERMEDIATE ─────────────────────
+    # remove intermediate files if requested
     if clean_prefix != converted_prefix:
-        cleanup_intermediate(converted_prefix, config.get("KEEP_INTERMEDIATE", "YES"))
+        cleanup_intermediate(
+            converted_prefix,
+            config.get("KEEP_INTERMEDIATE", "YES")
+        )
 
-    # ── REPORT ──────────────────────────────────
+    # write report and JSON
     log("Writing Step 2 report...")
     report_path, json_path = write_report(
         config, fmt, converted_prefix, clean_prefix,
@@ -494,13 +476,13 @@ def main():
     log(f"  Report : {report_path}")
     log(f"  JSON   : {json_path}")
 
-    # ── UPDATE CONFIG JSON FOR DOWNSTREAM STEPS ──
+    # update config JSON so downstream steps know the converted prefix
     config["CONVERTED_PREFIX"] = os.path.abspath(clean_prefix)
     config_out = os.path.join(output_dir, f"{project}_parsed_config.json")
     with open(config_out, "w") as cf:
         json.dump(config, cf, indent=2)
 
-    log(f"  Updated config saved : {config_out}")
+    log(f"  Updated config : {config_out}")
     log("Step 2 complete.")
 
 
