@@ -2,37 +2,45 @@
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
 ### CHUNK: Sample Call Rate (Step 3)
+### Version: 0.2.0
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
 ##########################################################################
-### DESCRIPTION
-### Filters samples based on genotype missingness rate using PLINK
-### --mind flag.
-###
-### Two modes controlled by CALLRATE_MODE in crisp_instructions.txt:
-###
-###   SIMPLE  (default)
-###     Single pass at MIND threshold (default 0.05)
-###
-###   CASCADE
-###     Four progressive passes:
-###       Pass 1 : --mind 0.25
-###       Pass 2 : --mind 0.20
-###       Pass 3 : --mind 0.10
-###       Pass 4 : --mind 0.05
-###
-### Output:
-###   .irem  -- excluded sample IDs per pass
-###   .imiss -- per-sample missingness statistics
-###   PDF plots via plot_callrate.R
-###   Structured Step 3 report
-###   Cumulative exclusion list for amendments step
+# Filters samples based on genotype missingness rate using PLINK
+# --mind flag.
+#
+# Three modes controlled by CALLRATE_MODE in crisp_instructions.txt:
+#
+#   SIMPLE  (default)
+#     Single pass at MIND threshold (default 0.05)
+#
+#   CASCADE
+#     Four fixed progressive passes:
+#       Pass 1 : --mind 0.25
+#       Pass 2 : --mind 0.20
+#       Pass 3 : --mind 0.10
+#       Pass 4 : --mind 0.05
+#
+#   CUSTOM
+#     User-defined tiers via SAMPLE_CUSTOM_TIERS
+#     Example: SAMPLE_CUSTOM_TIERS = 0.30,0.20,0.10,0.05
+#     Any number of tiers, strictly descending, between 0 and 1
+#
+# Output:
+#   .imiss              per-sample missingness statistics
+#   PDF plots via plot_callrate.R or plot_callrate.py
+#   Structured Step 3 report
+#   Cumulative exclusion list for amendments step
+#
+# Usage:
+#   bash crisp_callrate.sh
+#   bash crisp_callrate.sh --config my_project.txt
 ##########################################################################
 
 set -euo pipefail
 
 ##########################################################################
-### LOAD CRISP FLAVOUR -- NON-NEGOTIABLE
+### LOAD CRISP FLAVOUR (NON-NEGOTIABLE)
 ##########################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,13 +48,37 @@ source "${SCRIPT_DIR}/scripts/_crisp_flavour.sh"
 _init_runtime
 
 ##########################################################################
-### LOCATE INSTRUCTION FILE
+### PARSE COMMAND LINE ARGUMENTS
 ##########################################################################
 
 INSTRUCTION_FILE="crisp_instructions.txt"
 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config)
+            INSTRUCTION_FILE="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: bash crisp_callrate.sh [--config <file>]"
+            echo "  --config <file>   Instruction file path (default: crisp_instructions.txt)"
+            exit 0
+            ;;
+        *)
+            echo "[CRISP] ERROR: Unknown argument: $1"
+            echo "[CRISP]        Usage: bash crisp_callrate.sh [--config <file>]"
+            exit 1
+            ;;
+    esac
+done
+
+##########################################################################
+### LOCATE INSTRUCTION FILE
+##########################################################################
+
 if [ ! -f "${INSTRUCTION_FILE}" ]; then
     echo "[CRISP] ERROR: Instruction file not found: ${INSTRUCTION_FILE}"
+    echo "[CRISP]        Usage: bash crisp_callrate.sh --config <path>"
     exit 1
 fi
 
@@ -69,20 +101,19 @@ parse_param() {
     fi
 }
 
-INPUT_FORMAT=$(parse_param "INPUT_FORMAT")
 OUTPUT_DIR=$(parse_param "OUTPUT_DIR" "./results")
 PROJECT_NAME=$(parse_param "PROJECT_NAME" "project")
 KEEP_INTERMEDIATE=$(parse_param "KEEP_INTERMEDIATE" "YES")
 CALLRATE_MODE=$(parse_param "CALLRATE_MODE" "SIMPLE")
 MIND=$(parse_param "MIND" "0.05")
+SAMPLE_CUSTOM_TIERS=$(parse_param "SAMPLE_CUSTOM_TIERS" "")
 PLINK1=$(parse_param "PLINK1_PATH" "plink")
 RSCRIPT=$(parse_param "RSCRIPT_PATH" "Rscript")
 PLOT_ENGINE=$(parse_param "PLOT_ENGINE" "R")
 
-# Resolve input -- use converted prefix from Step 2 if available
+# use Step 2 output, fall back to naming convention if not set
 CONVERTED_PREFIX=$(parse_param "CONVERTED_PREFIX" "")
 if [ -z "${CONVERTED_PREFIX}" ]; then
-    # Fall back to Step 2 output naming convention
     CONVERTED_PREFIX="${OUTPUT_DIR}/step2_converted/${PROJECT_NAME}_converted_chrclean"
 fi
 
@@ -91,19 +122,16 @@ fi
 ##########################################################################
 
 echo ""
-echo "##########################################################################"
-echo "###                     CRISP - Version 0.1                           ###"
-echo "###        Comprehensive Robust Integrated SNP Processing            ###"
-echo "###                https://github.com/ipupko/CRISP                  ###"
-echo "##########################################################################"
-echo ""
 echo "[CRISP] ${PREP_MSG}"
 echo ""
 echo "[CRISP] Reading instruction file: ${INSTRUCTION_FILE}"
 echo ""
-echo "[CRISP] Parameters read from instruction file:"
+echo "[CRISP] Parameters:"
 echo "        CALLRATE_MODE     : ${CALLRATE_MODE}"
 echo "        MIND              : ${MIND}"
+if [ "${CALLRATE_MODE^^}" = "CUSTOM" ]; then
+echo "        SAMPLE_CUSTOM_TIERS: ${SAMPLE_CUSTOM_TIERS}"
+fi
 echo "        INPUT_PREFIX      : ${CONVERTED_PREFIX}"
 echo "        OUTPUT_DIR        : ${OUTPUT_DIR}"
 echo "        PROJECT_NAME      : ${PROJECT_NAME}"
@@ -137,13 +165,89 @@ REPORT_FILE="${OUTPUT_DIR}/${PROJECT_NAME}_step3_callrate_report.txt"
 mkdir -p "${STEP3_DIR}"
 mkdir -p "${LOG_DIR}"
 
-# Count samples before filtering
 SAMPLES_BEFORE=$(wc -l < "${CONVERTED_PREFIX}.fam" | tr -d '[:space:]')
 VARIANTS=$(wc -l < "${CONVERTED_PREFIX}.bim" | tr -d '[:space:]')
 
 echo "[CRISP] Samples before filtering : ${SAMPLES_BEFORE}"
 echo "[CRISP] Variants                 : ${VARIANTS}"
 echo ""
+
+##########################################################################
+### VALIDATE CUSTOM TIERS
+##########################################################################
+
+validate_tiers() {
+    local tiers_str="$1"
+    local prev=1.0
+
+    IFS=',' read -ra tiers <<< "${tiers_str}"
+
+    if [ "${#tiers[@]}" -lt 2 ]; then
+        echo "[CRISP] ERROR: CUSTOM mode requires at least 2 tiers."
+        echo "[CRISP]        Got: ${tiers_str}"
+        exit 1
+    fi
+
+    for tier in "${tiers[@]}"; do
+        if ! [[ "${tier}" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+            echo "[CRISP] ERROR: Invalid tier '${tier}', must be numeric between 0 and 1."
+            exit 1
+        fi
+        if (( $(echo "${tier} <= 0 || ${tier} >= 1" | bc -l) )); then
+            echo "[CRISP] ERROR: Tier '${tier}' out of range, must be between 0 and 1."
+            exit 1
+        fi
+        if (( $(echo "${tier} >= ${prev}" | bc -l) )); then
+            echo "[CRISP] ERROR: Tiers must be strictly descending."
+            echo "[CRISP]        Got: ${tiers_str}"
+            echo "[CRISP]        Example: SAMPLE_CUSTOM_TIERS = 0.30,0.20,0.10,0.05"
+            exit 1
+        fi
+        prev="${tier}"
+    done
+
+    echo "[OK]    Custom tiers validated: ${tiers_str}"
+}
+
+##########################################################################
+### GENERATE IMISS FILE
+##########################################################################
+
+generate_imiss() {
+    local bfile="$1"
+    local out_prefix="$2"
+    local log_file="$3"
+
+    ${PLINK1} \
+        --bfile "${bfile}" \
+        --missing \
+        --out "${out_prefix}" \
+        >> "${log_file}" 2>&1
+}
+
+##########################################################################
+### GENERATE PLOTS
+##########################################################################
+
+generate_plots() {
+    local mode="$1"
+    local plot_dir="$2"
+    local log_file="$3"
+    shift 3
+    local imiss_files=("$@")
+
+    if [ "${PLOT_ENGINE^^}" = "R" ]; then
+        ${RSCRIPT} "${SCRIPT_DIR}/scripts/plot_callrate.R" \
+            "${mode}" "${MIND}" "${plot_dir}" \
+            "${imiss_files[@]}" \
+            >> "${log_file}" 2>&1
+    elif [ "${PLOT_ENGINE^^}" = "PYTHON" ]; then
+        python3 "${SCRIPT_DIR}/scripts/plot_callrate.py" \
+            "${mode}" "${MIND}" "${plot_dir}" \
+            "${imiss_files[@]}" \
+            >> "${log_file}" 2>&1
+    fi
+}
 
 ##########################################################################
 ### SIMPLE MODE
@@ -155,7 +259,7 @@ run_simple() {
     echo "###            STEP 3: SAMPLE CALL RATE (SIMPLE MODE)                 ###"
     echo "##########################################################################"
     echo ""
-    echo "[CRISP] Applying single --mind ${MIND} filter..."
+    echo "[CRISP] Applying --mind ${MIND}..."
     echo ""
 
     OUT_PREFIX="${STEP3_DIR}/${PROJECT_NAME}_mind${MIND}"
@@ -173,16 +277,8 @@ run_simple() {
         exit 1
     fi
 
-    # Count results
     SAMPLES_AFTER=$(wc -l < "${OUT_PREFIX}.fam" | tr -d '[:space:]')
     SAMPLES_REMOVED=$((SAMPLES_BEFORE - SAMPLES_AFTER))
-
-    # Check if .irem exists (PLINK only creates it if samples were removed)
-    IREM_FILE="${OUT_PREFIX}.irem"
-    if [ ! -f "${IREM_FILE}" ]; then
-        touch "${IREM_FILE}"
-        echo "[CRISP] No samples removed at --mind ${MIND}."
-    fi
 
     echo "[OK]    SIMPLE filtering complete."
     echo ""
@@ -191,77 +287,61 @@ run_simple() {
     echo "[CRISP] Samples after  : ${SAMPLES_AFTER}"
     echo ""
 
-    # Generate missingness stats for plotting
+    # missingness stats for plotting
     IMISS_PREFIX="${STEP3_DIR}/${PROJECT_NAME}_simple_imiss"
-    ${PLINK1} \
-        --bfile "${CONVERTED_PREFIX}" \
-        --missing \
-        --out "${IMISS_PREFIX}" \
-        >> "${LOG_FILE}" 2>&1
-
+    generate_imiss "${CONVERTED_PREFIX}" "${IMISS_PREFIX}" "${LOG_FILE}"
     IMISS_FILE="${IMISS_PREFIX}.imiss"
 
-    # Generate plots
     echo "[CRISP] Generating call rate plots..."
-    if [ "${PLOT_ENGINE^^}" = "R" ]; then
-        ${RSCRIPT} "${SCRIPT_DIR}/scripts/plot_callrate.R" \
-            "SIMPLE" "${MIND}" "${STEP3_DIR}" "${IMISS_FILE}" \
-            >> "${LOG_DIR}/step3_plots.log" 2>&1
-        echo "[OK]    Plots saved to: ${STEP3_DIR}"
-    fi
+    generate_plots "SIMPLE" "${STEP3_DIR}" "${LOG_DIR}/step3_plots.log" "${IMISS_FILE}"
+    echo "[OK]    Plots saved to: ${STEP3_DIR}"
     echo ""
 
-    # Write cumulative exclusion list
+    # exclusion list
     EXCLUSION_LIST="${OUTPUT_DIR}/${PROJECT_NAME}_exclusions_step3.txt"
+    IREM_FILE="${OUT_PREFIX}.irem"
     if [ -f "${IREM_FILE}" ] && [ -s "${IREM_FILE}" ]; then
         cp "${IREM_FILE}" "${EXCLUSION_LIST}"
     else
         touch "${EXCLUSION_LIST}"
     fi
-
-    echo "[CRISP] Exclusion list written to: ${EXCLUSION_LIST}"
+    echo "[CRISP] Exclusion list: ${EXCLUSION_LIST}"
     echo ""
 
-    # Write report
     write_report "SIMPLE" "${MIND}" \
         "${SAMPLES_BEFORE}" "${SAMPLES_AFTER}" "${SAMPLES_REMOVED}" \
-        "" "" "" "" \
-        "${OUT_PREFIX}"
+        "" "" "" "" "${OUT_PREFIX}"
 }
 
 ##########################################################################
-### CASCADE MODE
+### MULTI-PASS RUNNER (shared by CASCADE and CUSTOM)
 ##########################################################################
 
-run_cascade() {
+run_multipass() {
 
-    echo "##########################################################################"
-    echo "###           STEP 3: SAMPLE CALL RATE (CASCADE MODE)                 ###"
-    echo "##########################################################################"
-    echo ""
-    echo "[CRISP] Running cascade: --mind 0.25 >> 0.20 >> 0.10 >> 0.05"
-    echo ""
+    local mode="$1"
+    shift
+    local thresholds=("$@")
+    local n="${#thresholds[@]}"
 
-    CASCADE_THRESHOLDS=("0.25" "0.20" "0.10" "0.05")
     CURRENT_INPUT="${CONVERTED_PREFIX}"
     IMISS_FILES=()
-
     TOTAL_REMOVED=0
     REMOVED_PER_PASS=()
     SAMPLES_PER_PASS=()
 
-    CUMULATIVE_IREM="${OUTPUT_DIR}/${PROJECT_NAME}_exclusions_step3.txt"
-    > "${CUMULATIVE_IREM}"
+    CUMULATIVE_EXCL="${OUTPUT_DIR}/${PROJECT_NAME}_exclusions_step3.txt"
+    > "${CUMULATIVE_EXCL}"
 
-    for i in "${!CASCADE_THRESHOLDS[@]}"; do
+    for i in "${!thresholds[@]}"; do
 
         PASS=$((i + 1))
-        THRESHOLD="${CASCADE_THRESHOLDS[$i]}"
-        OUT_PREFIX="${STEP3_DIR}/${PROJECT_NAME}_cascade_pass${PASS}_mind${THRESHOLD}"
-        LOG_FILE="${LOG_DIR}/step3_cascade_pass${PASS}.log"
+        THRESHOLD="${thresholds[$i]}"
+        OUT_PREFIX="${STEP3_DIR}/${PROJECT_NAME}_${mode,,}_pass${PASS}_mind${THRESHOLD}"
+        LOG_FILE="${LOG_DIR}/step3_${mode,,}_pass${PASS}.log"
 
         echo "------------------------------------------------------------------"
-        echo "[CRISP] Pass ${PASS} of 4 -- --mind ${THRESHOLD}"
+        echo "[CRISP] Pass ${PASS} of ${n}, --mind ${THRESHOLD}"
         echo "------------------------------------------------------------------"
         echo ""
 
@@ -292,62 +372,99 @@ run_cascade() {
         echo "        Samples remaining : ${SAMPLES_AFTER_PASS}"
         echo ""
 
-        # Append to cumulative exclusion list
+        # append to cumulative exclusion list
         IREM_FILE="${OUT_PREFIX}.irem"
         if [ -f "${IREM_FILE}" ] && [ -s "${IREM_FILE}" ]; then
-            cat "${IREM_FILE}" >> "${CUMULATIVE_IREM}"
+            cat "${IREM_FILE}" >> "${CUMULATIVE_EXCL}"
         fi
 
-        # Generate .imiss for this pass input
-        IMISS_PREFIX="${STEP3_DIR}/${PROJECT_NAME}_cascade_pass${PASS}_imiss"
-        ${PLINK1} \
-            --bfile "${CURRENT_INPUT}" \
-            --missing \
-            --out "${IMISS_PREFIX}" \
-            >> "${LOG_FILE}" 2>&1
-
+        # imiss for plotting
+        IMISS_PREFIX="${STEP3_DIR}/${PROJECT_NAME}_${mode,,}_pass${PASS}_mind${THRESHOLD}_imiss"
+        generate_imiss "${CURRENT_INPUT}" "${IMISS_PREFIX}" "${LOG_FILE}"
         IMISS_FILES+=("${IMISS_PREFIX}.imiss")
 
-        # Clean up intermediate if requested (keep final pass always)
-        if [ "${KEEP_INTERMEDIATE^^}" = "NO" ] && [ "${PASS}" -lt 4 ]; then
+        # clean up intermediate passes if not keeping
+        if [ "${KEEP_INTERMEDIATE^^}" = "NO" ] && [ "${PASS}" -lt "${n}" ]; then
             for ext in .bed .bim .fam .log .nosex; do
                 [ -f "${OUT_PREFIX}${ext}" ] && rm "${OUT_PREFIX}${ext}"
             done
-            echo "[CRISP] Intermediate Pass ${PASS} files removed."
         fi
 
         CURRENT_INPUT="${OUT_PREFIX}"
     done
 
-    SAMPLES_FINAL="${SAMPLES_PER_PASS[3]}"
+    SAMPLES_FINAL="${SAMPLES_PER_PASS[$((n-1))]}"
 
     echo "------------------------------------------------------------------"
-    echo "[CRISP] CASCADE complete."
+    echo "[CRISP] ${mode} complete."
     echo ""
-    echo "[CRISP] Samples before cascade : ${SAMPLES_BEFORE}"
-    echo "[CRISP] Total samples removed  : ${TOTAL_REMOVED}"
-    echo "[CRISP] Samples after cascade  : ${SAMPLES_FINAL}"
-    echo "[CRISP] Exclusion list         : ${CUMULATIVE_IREM}"
-    echo ""
-
-    # Generate plots
-    echo "[CRISP] Generating cascade call rate plots..."
-    if [ "${PLOT_ENGINE^^}" = "R" ]; then
-        ${RSCRIPT} "${SCRIPT_DIR}/scripts/plot_callrate.R" \
-            "CASCADE" "${MIND}" "${STEP3_DIR}" \
-            "${IMISS_FILES[0]}" "${IMISS_FILES[1]}" \
-            "${IMISS_FILES[2]}" "${IMISS_FILES[3]}" \
-            >> "${LOG_DIR}/step3_plots.log" 2>&1
-        echo "[OK]    Individual pass plots saved to  : ${STEP3_DIR}"
-        echo "[OK]    Faceted comparison plot saved to: ${STEP3_DIR}"
-    fi
+    echo "[CRISP] Samples before : ${SAMPLES_BEFORE}"
+    echo "[CRISP] Total removed  : ${TOTAL_REMOVED}"
+    echo "[CRISP] Samples after  : ${SAMPLES_FINAL}"
+    echo "[CRISP] Exclusion list : ${CUMULATIVE_EXCL}"
     echo ""
 
-    write_report "CASCADE" "${MIND}" \
+    echo "[CRISP] Generating ${mode} call rate plots..."
+    generate_plots "${mode}" "${STEP3_DIR}" \
+        "${LOG_DIR}/step3_plots.log" "${IMISS_FILES[@]}"
+    echo "[OK]    Plots saved to: ${STEP3_DIR}"
+    echo ""
+
+    # build pass summary string for report
+    PASS_SUMMARY=""
+    for i in "${!thresholds[@]}"; do
+        PASS_SUMMARY="${PASS_SUMMARY}  Pass $((i+1)) (mind=${thresholds[$i]}) : ${REMOVED_PER_PASS[$i]} samples removed\n"
+    done
+
+    write_report "${mode}" "${MIND}" \
         "${SAMPLES_BEFORE}" "${SAMPLES_FINAL}" "${TOTAL_REMOVED}" \
-        "${REMOVED_PER_PASS[0]}" "${REMOVED_PER_PASS[1]}" \
-        "${REMOVED_PER_PASS[2]}" "${REMOVED_PER_PASS[3]}" \
+        "${REMOVED_PER_PASS[0]:-}" "${REMOVED_PER_PASS[1]:-}" \
+        "${REMOVED_PER_PASS[2]:-}" "${REMOVED_PER_PASS[3]:-}" \
         "${CURRENT_INPUT}"
+}
+
+##########################################################################
+### CASCADE MODE
+##########################################################################
+
+run_cascade() {
+
+    echo "##########################################################################"
+    echo "###           STEP 3: SAMPLE CALL RATE (CASCADE MODE)                 ###"
+    echo "##########################################################################"
+    echo ""
+    echo "[CRISP] Running cascade: 0.25 >> 0.20 >> 0.10 >> 0.05"
+    echo ""
+
+    run_multipass "CASCADE" "0.25" "0.20" "0.10" "0.05"
+}
+
+##########################################################################
+### CUSTOM MODE
+##########################################################################
+
+run_custom() {
+
+    echo "##########################################################################"
+    echo "###           STEP 3: SAMPLE CALL RATE (CUSTOM MODE)                  ###"
+    echo "##########################################################################"
+    echo ""
+
+    if [ -z "${SAMPLE_CUSTOM_TIERS}" ]; then
+        echo "[CRISP] ERROR: CALLRATE_MODE = CUSTOM but SAMPLE_CUSTOM_TIERS is not set."
+        echo "[CRISP]        Add SAMPLE_CUSTOM_TIERS to ${INSTRUCTION_FILE}"
+        echo "[CRISP]        Example: SAMPLE_CUSTOM_TIERS = 0.30,0.20,0.10,0.05"
+        exit 1
+    fi
+
+    validate_tiers "${SAMPLE_CUSTOM_TIERS}"
+
+    IFS=',' read -ra CUSTOM_THRESHOLDS <<< "${SAMPLE_CUSTOM_TIERS}"
+
+    echo "[CRISP] Running custom cascade: $(echo "${SAMPLE_CUSTOM_TIERS}" | tr ',' ' >> ')"
+    echo ""
+
+    run_multipass "CUSTOM" "${CUSTOM_THRESHOLDS[@]}"
 }
 
 ##########################################################################
@@ -365,29 +482,30 @@ write_report() {
 
     {
         echo "=================================================================="
-        echo "  CRISP -- STEP 3 SAMPLE CALL RATE REPORT"
+        echo "  CRISP: STEP 3 SAMPLE CALL RATE REPORT"
         echo "  Comprehensive Robust Integrated SNP Processing"
         echo "=================================================================="
         echo "  Project      : ${PROJECT_NAME}"
         echo "  Date         : $(date)"
         echo "  Mode         : ${mode}"
         echo "  MIND         : ${mind}"
+        if [ "${mode}" = "CUSTOM" ]; then
+        echo "  Custom tiers : ${SAMPLE_CUSTOM_TIERS}"
+        fi
         echo "------------------------------------------------------------------"
         echo "  SAMPLE COUNTS"
         echo "  Samples before filtering : ${before}"
         echo "  Samples after filtering  : ${after}"
         echo "  Samples removed          : ${total_removed}"
         echo "  Variants (unchanged)     : ${VARIANTS}"
-
         if [ "${mode}" = "CASCADE" ]; then
-            echo "------------------------------------------------------------------"
-            echo "  CASCADE PASS SUMMARY"
-            echo "  Pass 1 (mind=0.25) : ${r1} samples removed"
-            echo "  Pass 2 (mind=0.20) : ${r2} samples removed"
-            echo "  Pass 3 (mind=0.10) : ${r3} samples removed"
-            echo "  Pass 4 (mind=0.05) : ${r4} samples removed"
+        echo "------------------------------------------------------------------"
+        echo "  CASCADE PASS SUMMARY"
+        echo "  Pass 1 (mind=0.25) : ${r1} samples removed"
+        echo "  Pass 2 (mind=0.20) : ${r2} samples removed"
+        echo "  Pass 3 (mind=0.10) : ${r3} samples removed"
+        echo "  Pass 4 (mind=0.05) : ${r4} samples removed"
         fi
-
         echo "------------------------------------------------------------------"
         echo "  OUTPUT"
         echo "  Final BED prefix  : ${final_prefix}"
@@ -399,11 +517,8 @@ write_report() {
         if [ "${mode}" = "SIMPLE" ]; then
             echo "  step3_callrate_simple.pdf"
         else
-            echo "  step3_callrate_cascade_pass1.pdf"
-            echo "  step3_callrate_cascade_pass2.pdf"
-            echo "  step3_callrate_cascade_pass3.pdf"
-            echo "  step3_callrate_cascade_pass4.pdf"
-            echo "  step3_callrate_cascade_faceted.pdf"
+            echo "  step3_callrate_${mode,,}_pass[N].pdf (one per pass)"
+            echo "  step3_callrate_${mode,,}_faceted.pdf"
         fi
         echo "=================================================================="
         echo "  END OF REPORT"
@@ -425,9 +540,12 @@ case "${CALLRATE_MODE^^}" in
     CASCADE)
         run_cascade
         ;;
+    CUSTOM)
+        run_custom
+        ;;
     *)
         echo "[CRISP] ERROR: Unknown CALLRATE_MODE '${CALLRATE_MODE}'"
-        echo "[CRISP]        Valid options: SIMPLE, CASCADE"
+        echo "[CRISP]        Valid options: SIMPLE, CASCADE, CUSTOM"
         exit 1
         ;;
 esac
