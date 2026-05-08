@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""
-=============================================================
-GENETIC DATA PROCESSING PIPELINE
-Step 1: File Validation, MD5 Generation, Input Summary
-=============================================================
-Author  : Pipeline auto-generated
-Usage   : python3 step1_validate_input.py --config pipeline_instructions.txt
-=============================================================
-"""
+##########################################################################
+# CRISP - Comprehensive Robust Integrated SNP Processing
+# Step 1: File Validation, MD5 and Input Summary
+# Version: 0.2.0
+# Developed by Igor Pupko
+# https://github.com/ipupko/CRISP
+##########################################################################
 
 import argparse
 import hashlib
