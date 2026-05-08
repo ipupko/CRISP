@@ -4,7 +4,7 @@
 
 # CRISP
 Comprehensive Robust Integrated SNP Processing
-
+!CURRENTLY UNDER ACTIVE DEVELOPMENT!
 
 
 CRISP is a modular, instruction-file-driven pipeline for quality control and processing of large-scale genotyping data. It was developed with one goal in mind: to make robust, reproducible genotype QC accessible to anyone working with SNP array data, regardless of their computational background.
