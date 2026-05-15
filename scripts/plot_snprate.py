@@ -1,35 +1,31 @@
 #!/usr/bin/env python3
 ##########################################################################
-### CRISP - Comprehensive Robust Integrated SNP Processing
-### Step 4: Variant Call Rate -- Python Plotting Script
-### Developed by Igor Pupko
-### https://github.com/ipupko/CRISP
+# CRISP - Comprehensive Robust Integrated SNP Processing
+# Step 4: Variant Call Rate, Plotting Script
+# Version: 0.2.0
+# Developed by Igor Pupko
+# https://github.com/ipupko/CRISP
+# Part of the Compass Genomics suite
 ##########################################################################
-### DESCRIPTION
-### Python alternative to plot_snprate.R for users who prefer
-### matplotlib/seaborn over ggplot2.
-### Selected via PLOT_ENGINE = PYTHON in crisp_instructions.txt.
-###
-### SIMPLE mode:
-###   Single histogram of per-variant missingness rates
-###   Vertical line marking the GENO threshold
-###   Variants failing threshold highlighted in red
-###
-### CASCADE mode:
-###   Four individual histograms, one per pass
-###   Single faceted 2x2 plot showing all passes
-###
-### CUSTOM mode:
-###   One individual histogram per tier
-###   Single faceted plot -- 2 columns, rows scale to tier count
-###   Last cell hidden if odd number of tiers
-###
-### Usage:
-###   python3 plot_snprate.py <mode> <geno> <report_dir> <lmiss_files...>
-###   mode       : SIMPLE, CASCADE, or CUSTOM
-###   geno       : final GENO threshold (e.g. 0.05)
-###   report_dir : output directory for plots
-###   lmiss_files: one .lmiss file (SIMPLE) or one per tier
+# Python alternative to plot_snprate.R for users who prefer
+# matplotlib over ggplot2. Selected via PLOT_ENGINE = PYTHON.
+#
+# SIMPLE mode:
+#   Single histogram of per-variant missingness rates
+#   Vertical line marking the GENO threshold
+#   Variants failing threshold highlighted in red
+#
+# CASCADE mode:
+#   Four individual histograms, one per pass
+#   Single faceted 2x2 plot showing all passes
+#
+# CUSTOM mode:
+#   One individual histogram per tier
+#   Single faceted plot, 2 columns, rows scale to tier count
+#   Last cell hidden if odd number of tiers
+#
+# Usage:
+#   python3 plot_snprate.py <mode> <geno> <report_dir> <lmiss_files...>
 ##########################################################################
 
 import sys
@@ -334,7 +330,7 @@ def main():
 
     os.makedirs(report_dir, exist_ok=True)
 
-    log("CRISP Step 4 - Variant Call Rate Plotting (Python)")
+    log("CRISP Step 4 -- Variant Call Rate Plotting (Python)")
     log(f"Mode       : {mode}")
     log(f"GENO       : {geno}")
     log(f"Report dir : {report_dir}")
