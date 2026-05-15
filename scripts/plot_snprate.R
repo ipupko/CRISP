@@ -1,33 +1,35 @@
 #!/usr/bin/env Rscript
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
-### Step 4: Variant Call Rate -- Plotting Script
+### Step 4: Variant Call Rate - Plotting Script
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
+### Part of the Compass Genomics suite
+# Part of the Compass Genomics suite
 ##########################################################################
-### DESCRIPTION
-### Generates per-SNP missingness distribution plots from PLINK
-### .lmiss files.
-###
-### SIMPLE mode:
-###   Single histogram of per-variant missingness rates
-###   Vertical line marking the GENO threshold
-###   Variants failing threshold highlighted in red
-###
-### CASCADE mode:
-###   Four individual histograms, one per pass
-###   Single faceted 2x2 plot showing all passes
-###
-### CUSTOM mode:
-###   One individual histogram per tier
-###   Single faceted plot -- 2 columns, rows scale to tier count
-###
-### Usage:
-###   Rscript plot_snprate.R <mode> <geno> <report_dir> <lmiss_files...>
-###   mode       : SIMPLE, CASCADE, or CUSTOM
-###   geno       : final GENO threshold (e.g. 0.05)
-###   report_dir : output directory for plots
-###   lmiss_files: one .lmiss file (SIMPLE) or one per tier
+# DESCRIPTION
+# Generates per-SNP missingness distribution plots from PLINK
+# .lmiss files.
+#
+# SIMPLE mode:
+#   Single histogram of per-variant missingness rates
+#   Vertical line marking the GENO threshold
+#   Variants failing threshold highlighted in red
+#
+# CASCADE mode:
+#   Four individual histograms, one per pass
+#   Single faceted 2x2 plot showing all passes
+#
+# CUSTOM mode:
+#   One individual histogram per tier
+#   Single faceted plot -- 2 columns, rows scale to tier count
+#
+# Usage:
+#   Rscript plot_snprate.R <mode> <geno> <report_dir> <lmiss_files...>
+#   mode       : SIMPLE, CASCADE, or CUSTOM
+#   geno       : final GENO threshold (e.g. 0.05)
+#   report_dir : output directory for plots
+#   lmiss_files: one .lmiss file (SIMPLE) or one per tier
 ##########################################################################
 
 suppressPackageStartupMessages({
@@ -52,7 +54,7 @@ n_passes    <- length(lmiss_files)
 dir.create(report_dir, showWarnings = FALSE, recursive = TRUE)
 
 ##########################################################################
-### THEME
+# THEME
 ##########################################################################
 
 crisp_theme <- theme_minimal(base_size = 12) +
@@ -67,7 +69,7 @@ crisp_theme <- theme_minimal(base_size = 12) +
     )
 
 ##########################################################################
-### HELPER: LOAD LMISS FILE
+# HELPER: LOAD LMISS FILE
 ##########################################################################
 
 load_lmiss <- function(filepath) {
@@ -80,7 +82,7 @@ load_lmiss <- function(filepath) {
 }
 
 ##########################################################################
-### SIMPLE MODE
+# SIMPLE MODE
 ##########################################################################
 
 plot_simple <- function(lmiss_file, geno, report_dir) {
@@ -135,8 +137,8 @@ plot_simple <- function(lmiss_file, geno, report_dir) {
 }
 
 ##########################################################################
-### MULTI-PASS MODE (CASCADE and CUSTOM)
-### Handles any number of passes -- 2 column faceted grid
+# MULTI-PASS MODE (CASCADE and CUSTOM)
+# Handles any number of passes -- 2 column faceted grid
 ##########################################################################
 
 plot_multipass <- function(lmiss_files, thresholds, mode, report_dir) {
@@ -260,7 +262,7 @@ plot_multipass <- function(lmiss_files, thresholds, mode, report_dir) {
 }
 
 ##########################################################################
-### DISPATCH
+# DISPATCH
 ##########################################################################
 
 cat("\n[PLOT] CRISP Step 4 -- Variant Call Rate Plotting\n")
