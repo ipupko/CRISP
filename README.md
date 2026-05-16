@@ -1,197 +1,235 @@
 <img width="1408" height="768" alt="Firefly_Logo for CRISP (Comprehensive Robust Integrated SNP Processing), a genomic data quali 726701" src="https://github.com/user-attachments/assets/f7312a7e-9584-42c7-b902-4351c3cfa930" />
 
+# CRISP 
+### Comprehensive Robust Integrated SNP Processing !!! Under active Development!!!
+*Part of the [Compass Genomics](https://github.com/ipupko) suite*
 
-
-# CRISP
-Comprehensive Robust Integrated SNP Processing
-!CURRENTLY UNDER ACTIVE DEVELOPMENT!
-
-
-CRISP is a modular, instruction-file-driven pipeline for quality control and processing of large-scale genotyping data. It was developed with one goal in mind: to make robust, reproducible genotype QC accessible to anyone working with SNP array data, regardless of their computational background.
-
-Whether you are processing a few hundred samples on a local Linux server or running a biobank-scale dataset on an HPC cluster, CRISP handles the heavy lifting through a single plain-text instruction file. You specify what you want. CRISP does the rest.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20HPC%20%7C%20SLURM-orange.svg)]()
+[![Language](https://img.shields.io/badge/language-Bash%20%7C%20R%20%7C%20Python-lightgrey.svg)]()
 
 ---
 
-## Table of Contents
+CRISP is a genotype quality control pipeline for large-scale SNP array data. It is built around a single plain-text instruction file, runs on anything from a laptop to a 1000-core HPC cluster, and produces structured reports and publication-ready plots at every step.
 
-- [Background](#background)
-- [What CRISP Does](#what-crisp-does)
-- [Supported Input Formats](#supported-input-formats)
-- [Requirements](#requirements)
-- [Getting Started](#getting-started)
-- [Output Structure](#output-structure)
-- [A Note on Thresholds](#a-note-on-thresholds)
-- [HPC and SLURM](#hpc-and-slurm)
-- [Questions and Contributions](#questions-and-contributions)
+Most QC pipelines are a collection of bash scripts someone wrote for their own dataset. CRISP is what happens when you decide to do it properly.
 
 ---
 
-## Background
+## Why CRISP
 
-Anyone who has worked with large genotyping datasets knows that quality control is rarely straightforward. Call rate filtering, sex verification, heterozygosity outliers, chromosomal aneuploidies, relatedness -- each step has its own quirks, and getting them right matters enormously for downstream analyses. Mistakes at the QC stage propagate silently into association results, PRS models, and everything that follows.
+Genotype QC is not glamorous but it matters enormously. A poorly QC'd dataset introduces systematic biases that no downstream analysis can fully recover from. CRISP was written because the existing options were either too opaque, too rigid, or too tied to a specific cohort's conventions.
 
-CRISP grew out of a collection of standalone R scripts developed and refined through real genotyping projects. Those scripts worked well, but running them required manual intervention at every step, careful bookkeeping of intermediate files, and a reasonable amount of bioinformatics experience just to get started. CRISP brings all of those steps together into a single coherent pipeline, with consistent logging, structured outputs, and sensible defaults at every stage.
+A few things that are genuinely different here:
 
-> If you are new to genotype QC, CRISP is designed to guide you through the process. If you are experienced, it is designed to get out of your way.
+- **One instruction file controls everything.** No Python environments to configure, no Snakemake DAGs to write. If a wet lab collaborator can edit a text file, they can run CRISP.
+- **Every step is auditable.** MD5 checksums at the start, structured reports at every step, JSON exports throughout. You can hand the output folder to a reviewer and they can reconstruct exactly what was done.
+- **Three call rate modes.** SIMPLE (single threshold), CASCADE (progressive tightening), and CUSTOM (user-defined tiers). Most pipelines only offer SIMPLE.
+- **Dual plotting engine.** R and Python produce identical outputs. No more arguments about ggplot2 vs matplotlib.
+- **Biobank scale tested.** Explicitly designed and tested at UK Biobank scale -- 487k samples, 784k variants.
+- **AI-assisted threshold recommendation coming in v1.3.** CRISP will analyse your missingness distribution and suggest thresholds based on where natural breaks occur, rather than applying generic defaults.
 
 ---
 
-## What CRISP Does
-
-CRISP processes genotyping data through a series of independent, chainable QC steps. Each step can be enabled or disabled individually. All thresholds have tested defaults and can be overridden in the instruction file.
+## Pipeline steps
 
 | Step | Name | Description |
-|:----:|------|-------------|
-| 1 | File Validation | MD5 checksum generation, input file summary, instruction file parsing |
-| 2 | Format Conversion | Optional conversion of PED/MAP, VCF, BCF, or BGEN to BED/BIM/FAM |
-| 3 | Sample Call Rate | Sample-level missingness filtering (`--mind`) |
-| 4 | Variant Call Rate | Variant-level missingness filtering (`--geno`), tiered reporting |
-| 5 | Sex Check | F-statistic and Y-count sex verification, mismatch detection |
-| 6 | Aneuploidy Detection | Turner (X0), Klinefelter (XXY), and triple-X (XXX) identification |
-| 7 | Heterozygosity and Homozygosity | Z-score outlier detection, runs of homozygosity |
-| 8 | Relatedness | IBD-based duplicate and relative detection (KING available as alternative) |
-| 9 | Variant QC | MAF filtering, HWE testing, monomorphic SNP removal |
-| 10 | PCA | LD pruning, principal component analysis, ancestry visualisation |
-| 11 | Amendments | Application of all exclusion lists, clean final dataset production |
-| 12 | Summary Report | End-to-end QC summary across all steps |
+|------|------|-------------|
+| 1 | File validation | MD5 checksums, file signature checks, dataset dimensions |
+| 2 | Format conversion | PLINK, PED, VCF, BCF and BGEN all supported |
+| 3 | Sample call rate | Per-sample missingness filtering, SIMPLE/CASCADE/CUSTOM modes |
+| 4 | Variant call rate | Per-variant missingness, monomorphic removal, MAF filtering |
+| 5 | Sex check | F-statistic and Y chromosome count, mismatch and aneuploidy detection |
+| 6 | Homozygosity | Heterozygosity outliers, runs of homozygosity, Z-score filtering |
+| 7 | Relatedness | IBD (default) or KING at biobank scale |
+| 8 | HWE | Hardy-Weinberg equilibrium filtering with optional meta-analysis |
+| 9 | PCA | LD pruning, principal components, ancestry visualisation |
+| 10 | Amendments | Applies all exclusion lists, produces final clean dataset |
+| 11 | Summary report | End-to-end QC summary across all steps |
 
----
-
-## Supported Input Formats
-
-CRISP accepts the four most common genotyping data formats used in human genetics research:
-
-| Format | Notes |
-|--------|-------|
-| `BED/BIM/FAM` | Binary PLINK format. Most common for processed array data |
-| `PED/MAP` |     Text PLINK format. Automatically converted to BED in Step 2 |
-| `VCF / BCF` |   Standard variant call format, including gzipped VCF |
-| `BGEN` |        Oxford format, commonly used for UK Biobank data |
-
-All formats are converted to BED/BIM/FAM internally before QC begins.
+Steps 3, 4 and 5 are interchangeable via `STEP_ORDER` in the instruction file. Different groups apply these in different orders and CRISP does not enforce a preference.
 
 ---
 
 ## Requirements
 
-CRISP is written in Python (orchestration), R (QC plots and reports), and Bash (master script). It runs on any Unix/Linux/macOS system. Optional SLURM support is available for HPC environments.
+| Tool | Version | Notes |
+|------|---------|-------|
+| PLINK 1.9 | >= 1.90b | Core QC operations |
+| PLINK 2 | >= 2.0 | Format conversion, KING relatedness |
+| R | >= 4.0 | Default plotting engine |
+| Python | >= 3.8 | Alternative plotting engine, Step 2 orchestration |
 
-### Software
+R packages: `ggplot2`, `data.table`, `scales`
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| [PLINK 1.9](https://www.cog-genomics.org/plink/) | >= 1.90b | Core genotype processing |
-| [PLINK 2](https://www.cog-genomics.org/plink/2.0/) | >= 2.0 | Format conversion, optional KING relatedness |
-| Python | >= 3.8 | Pipeline orchestration |
-| R | >= 4.0 | QC plots and reports |
+Python packages (only needed if `PLOT_ENGINE = PYTHON`): `matplotlib`, `pandas`, `numpy`
 
-### R Packages
-
-```r
-install.packages(c("tidyverse", "data.table", "ggplot2", "scales"))
-```
-
-### Python Packages
-
-Only required if `PLOT_ENGINE = PYTHON`:
-
-```bash
-pip install matplotlib seaborn pandas
-```
+CRISP checks all tool paths at startup and reports clearly before running anything. Missing optional tools generate warnings, missing required tools cause an immediate exit.
 
 ---
 
-## Getting Started
-
-### 1. Clone the repository
+## Quick start
 
 ```bash
 git clone https://github.com/ipupko/CRISP.git
 cd CRISP
-```
 
-### 2. Set up your instruction file
-
-```bash
 cp pipeline_instructions.txt my_project.txt
 ```
 
 Open `my_project.txt` and set at minimum:
 
 ```text
-INPUT_FORMAT    = PLINK
-INPUT_PATH      = /path/to/your/data
-OUTPUT_DIR      = ./results
-PROJECT_NAME    = my_project
+INPUT_FORMAT        = PLINK
+INPUT_PATH          = /path/to/your/data
+OUTPUT_DIR          = ./results
+PROJECT_NAME        = my_project
+COHORT_POPULATION   = EUR
 ```
 
-Everything else has a sensible default. Adjust thresholds as needed for your dataset.
-
-### 3. Run the pipeline
+Then run:
 
 ```bash
-bash master_pipeline.sh --config my_project.txt
+bash crisp_upload_chunk.sh --config my_project.txt
+bash crisp_convert.sh      --config my_project.txt
+bash crisp_callrate.sh     --config my_project.txt
+bash crisp_snprate.sh      --config my_project.txt
+bash crisp_sexcheck.sh     --config my_project.txt
+# ... and so on
 ```
 
-That is it. CRISP will work through each enabled step in sequence, writing logs and structured outputs as it goes.
+Or via the master script:
+
+```bash
+bash crisp_master.sh --config my_project.txt
+```
+
+On SLURM:
+
+```bash
+sbatch crisp_master.sh --config my_project.txt
+```
 
 ---
 
-## Output Structure
+## Instruction file
 
-Every run produces a structured output directory:
+Everything is controlled through `crisp_instructions.txt`. The file ships with sensible defaults -- only `INPUT_FORMAT`, `INPUT_PATH` and `COHORT_POPULATION` are compulsory.
+
+```text
+# --- INPUT -------------------------------------------
+INPUT_FORMAT        = PLINK     # PLINK | PED | VCF | BCF | BGEN
+INPUT_PATH          = /data/ukb/ukb_qc_2024
+OUTPUT_DIR          = ./results
+PROJECT_NAME        = ukb_qc_2024
+
+# --- COHORT (REQUIRED) -------------------------------
+COHORT_POPULATION   = EUR       # UNKNOWN | EUR | AFR | EAS | SAS | AMR | MID | CSA
+COHORT_SUBPOPULATION= NONE      # e.g. FIN, HUN, PAK, ETH
+
+# --- CALL RATE ----------------------------------------
+CALLRATE_MODE       = CASCADE   # SIMPLE | CASCADE | CUSTOM
+MIND                = 0.05
+GENO                = 0.05
+
+# --- VARIANT QC --------------------------------------
+MAF                 = 0.01
+REMOVE_MONO         = YES
+FILTER_MAF          = YES
+HWE                 = 1e-6
+
+# --- SEX CHECK ---------------------------------------
+SEXCHECK_EXCLUDE_MISMATCH   = YES
+SEXCHECK_EXCLUDE_ANEUPLOIDY = YES
+
+# --- OUTPUT ------------------------------------------
+PLOT_ENGINE         = R         # R | PYTHON
+EXPORT_FORMAT       = PLINK     # PLINK | VCF | BGEN | GEN | ALL
+SCHEDULER           = NONE      # NONE | SLURM
+```
+
+See `pipeline_instructions.txt` for the full refernce including tool paths, phasing parameters, downstream tool preparation flags, and advanced options.
+
+---
+
+## Output structure
 
 ```
 results/
-├── my_project_step1_input_summary.txt     # Input file inventory and MD5 checksums
-├── my_project_parsed_config.json          # Full record of parameters used
-├── step3_sample_callrate/
-│   ├── *.irem                             # Excluded sample IDs
-│   └── *.imiss                            # Per-sample missingness report
-├── step4_variant_callrate/
-│   ├── SNP_excluded.txt                   # Variant exclusion counts by tier
-│   └── callrate_histogram.pdf             # Missingness distribution plot
-├── step5_sex_check/
-│   ├── Sex_check.pdf                      # F-statistic vs Y-count plots
-│   └── report_sex.mismatch_aneuploidies.txt
-├── step6_aneuploidy/
-│   └── id_list_aneuploidies.txt           # Samples flagged for exclusion
-├── step7_homozygosity/
-│   ├── Homozygosity_Runs_vs_Zscore.pdf
-│   └── outliers_high_heterozygosity_iids.txt
-├── step8_relatedness/
-│   ├── relatedness_report.txt
-│   └── id_list_related.txt
+├── ukb_qc_2024_input_md5.txt
+├── ukb_qc_2024_input_summary.txt
+├── ukb_qc_2024_parsed_config.json
+├── logs/
+├── step2_converted/
+├── step3_callrate/
+│   ├── ukb_qc_2024_exclusions_step3.txt
+│   └── step3_callrate_cascade_faceted.pdf
+├── step4_snprate/
+│   ├── ukb_qc_2024_exclusions_step4.txt
+│   ├── ukb_qc_2024_exclusions_step4_monomorphic.txt
+│   ├── ukb_qc_2024_exclusions_step4_maf.txt
+│   └── step4_snprate_diagnostic_summary.pdf
+├── step5_sexcheck/
+│   ├── ukb_qc_2024_exclusions_sex_mismatch.txt
+│   ├── ukb_qc_2024_exclusions_aneuploidies.txt
+│   └── step5_sexcheck.pdf
+├── step6_homozygosity/
+│   └── step6_homozygosity_outliers.pdf
 └── final/
-    ├── my_project_clean.bed/.bim/.fam     # Final QC-passing dataset
-    └── my_project_QC_summary.txt          # End-to-end summary report
+    ├── ukb_qc_2024_clean.bed
+    ├── ukb_qc_2024_clean.bim
+    ├── ukb_qc_2024_clean.fam
+    └── ukb_qc_2024_QC_summary.txt
 ```
 
 ---
 
-## A Note on Thresholds
+## Compass Genomics suite
 
-The default thresholds in CRISP reflect commonly used values in the human genetics literature and are appropriate for most standard SNP array datasets. That said, no single set of thresholds is universally correct. The right values depend on your array platform, sample ancestry, sample size, and downstream analysis goals.
+CRISP is part of a broader set of tools for end-to-end genomic data processing:
 
-If you are unsure where to start, run CRISP with the defaults first and review the diagnostic plots before making decisions. The plots are designed to help you understand your data, not just to flag exclusions automatically.
+| Tool | Purpose | Status |
+|------|---------|--------|
+| **CRISP** | Genotype QC | Active development |
+| **CRISP-py** | Python-native reimplementation of CRISP | Planned v2.0 |
+| **CAIRN** | Phenotype and metabolomics imputation | Active development |
+| **CODA** | Post-analysis QC and result visualisation | Planned post CRISP-py |
 
----
-
-## HPC and SLURM
-
-For users running on a cluster, set `SCHEDULER = SLURM` in the instruction file. CRISP will submit each step as a dependent SLURM job, with memory and time allocations configurable at the top of `master_pipeline.sh`. Logs for each job are written to the `logs/` directory.
-
----
-
-## Questions and Contributions
-
-CRISP is actively under development. If you encounter an issue, have a suggestion, or want to contribute, please open an [issue](https://github.com/ipupko/CRISP/issues).
-
-Feedback from people actually using the pipeline on real datasets is particularly valuable.
+All tools share the same instuction file philosophy. If you know how to run CRISP you will know how to run CAIRN.
 
 ---
 
-<p align="center">
-  Developed by <a href="https://github.com/ipupko">Igor Pupko</a>
-</p>
+## Roadmap highlights
+
+- **v1.1** -- Bioconda, JOSS paper, Snakemake/Nextflow wrappers, SHAPEIT2 phasing, multi-allelic support
+- **v1.3** -- AI-assisted threshold recommendation, automated methods paragraph generation
+- **v1.5** -- TOPMed and HRC pre-imputation preparation modules
+- **v2.0** -- CRISP-py with native format conversion engine (no PLINK dependency for Step 2)
+
+Full roadmap in [ROADMAP.md](ROADMAP.md).
+
+---
+
+## Citation
+
+If you use CRISP in your research please cite this repository until the JOSS paper is published:
+
+```
+Pupko I. (2026) CRISP: Comprehensive Robust Integrated SNP Processing.
+Compass Genomics. https://github.com/ipupko/CRISP
+```
+
+Co-authors: Dr Jared Maina, Dr Vincent Pascat (tentative, pending JOSS submission).
+
+---
+
+## Contributing
+
+Issues and feature requests are welcome -- please open one before submitting a pull request so we can discuss the proposed change first. If you are using CRISP on a dataset and hit something unexpected, a minimal reproducible example is enormously helpful.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
