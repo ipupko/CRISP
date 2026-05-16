@@ -115,7 +115,7 @@ sbatch crisp_master.sh --config my_project.txt
 
 ## Instruction file
 
-Everything is controlled through `crisp_instructions.txt`. The file ships with sensible defaults -- only `INPUT_FORMAT`, `INPUT_PATH` and `COHORT_POPULATION` are compulsory.
+Everything is controlled through `crisp_instructions.txt`. The file ships with sensible defaults - only `INPUT_FORMAT`, `INPUT_PATH` and `COHORT_POPULATION` are compulsory.
 
 ```text
 # --- INPUT -------------------------------------------
@@ -220,13 +220,12 @@ Pupko I. (2026) CRISP: Comprehensive Robust Integrated SNP Processing.
 Compass Genomics. https://github.com/ipupko/CRISP
 ```
 
-Co-authors: Dr Jared Maina, Dr Vincent Pascat (tentative, pending JOSS submission).
 
 ---
 
 ## Contributing
 
-Issues and feature requests are welcome -- please open one before submitting a pull request so we can discuss the proposed change first. If you are using CRISP on a dataset and hit something unexpected, a minimal reproducible example is enormously helpful.
+Issues and feature requests are welcome - please open one before submitting a pull request so we can discuss the proposed change first. If you are using CRISP on a dataset and hit something unexpected, a minimal reproducible example is enormously helpful.
 
 ---
 
