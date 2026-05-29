@@ -46,6 +46,8 @@ f_klinefelter   <- as.numeric(args[7])
 f_xxx           <- as.numeric(args[8])
 y_use_mean      <- toupper(args[9])
 y_manual        <- as.numeric(args[10])
+label_field     <- if (length(args) >= 11) args[11] else "IID"
+show_labels     <- if (length(args) >= 12) toupper(args[12]) == "YES" else TRUE
 
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -118,6 +120,119 @@ legend("topright",
        pch    = c(19, 19, NA, NA, NA),
        cex    = 0.8)
 
+# label anomalies with boundary-aware, collision-resolving arrows
+# called after each plot is drawn, before dev.off()
+# placed_labels is an environment used to track label positions across calls
+label_samples <- function(df_flag, type_label, col,
+                          label_field  = "IID",
+                          show_labels  = TRUE,
+                          placed_list  = NULL) {
+    if (nrow(df_flag) == 0) return(invisible(NULL))
+
+    # draw star overlay
+    points(df_flag$F, df_flag$YCOUNT,
+           col = col, pch = 8, cex = 1.6, lwd = 2.0)
+
+    if (!show_labels) return(invisible(NULL))
+
+    usr   <- par("usr")         # c(xmin, xmax, ymin, ymax)
+    x_rng <- usr[2] - usr[1]
+    y_rng <- usr[4] - usr[3]
+
+    for (i in seq_len(nrow(df_flag))) {
+        lbl <- switch(label_field,
+            "FID_IID" = paste0(df_flag$FID[i], "_", df_flag$IID[i],
+                               " (", type_label, ")"),
+            "FID"     = paste0(df_flag$FID[i], " (", type_label, ")"),
+                        paste0(df_flag$IID[i], " (", type_label, ")")
+        )
+
+        x0 <- df_flag$F[i]
+        y0 <- df_flag$YCOUNT[i]
+
+        # candidate offsets in priority order
+        candidates <- list(
+            c( x_rng*0.10,  y_rng*0.10),
+            c(-x_rng*0.10,  y_rng*0.10),
+            c( x_rng*0.10, -y_rng*0.10),
+            c(-x_rng*0.10, -y_rng*0.10),
+            c( x_rng*0.15,  y_rng*0.05),
+            c(-x_rng*0.15,  y_rng*0.05),
+            c( x_rng*0.05,  y_rng*0.15),
+            c( x_rng*0.05, -y_rng*0.15)
+        )
+
+        lbl_w <- strwidth(lbl,  cex = 0.62)
+        lbl_h <- strheight(lbl, cex = 0.62)
+        margin <- x_rng * 0.01
+
+        best_x <- NA
+        best_y <- NA
+
+        for (cand in candidates) {
+            cx <- x0 + cand[1]
+            cy <- y0 + cand[2]
+
+            # boundary check -- keep label inside plot area
+            if (cx - lbl_w/2 < usr[1] + margin) next
+            if (cx + lbl_w/2 > usr[2] - margin) next
+            if (cy - lbl_h/2 < usr[3] + margin) next
+            if (cy + lbl_h/2 > usr[4] - margin) next
+
+            # collision check against already placed labels
+            overlap <- FALSE
+            if (!is.null(placed_list) && length(placed_list$x) > 0) {
+                for (j in seq_along(placed_list$x)) {
+                    if (abs(cx - placed_list$x[j]) < lbl_w * 0.9 &&
+                        abs(cy - placed_list$y[j]) < lbl_h * 1.5) {
+                        overlap <- TRUE
+                        break
+                    }
+                }
+            }
+            if (!overlap) { best_x <- cx; best_y <- cy; break }
+        }
+
+        # fallback if no clean position found
+        if (is.na(best_x)) {
+            best_x <- x0 + candidates[[1]][1]
+            best_y <- y0 + candidates[[1]][2]
+            best_x <- max(usr[1] + margin + lbl_w/2,
+                          min(usr[2] - margin - lbl_w/2, best_x))
+            best_y <- max(usr[3] + margin + lbl_h,
+                          min(usr[4] - margin, best_y))
+        }
+
+        # record placement
+        if (!is.null(placed_list)) {
+            placed_list$x <- c(placed_list$x, best_x)
+            placed_list$y <- c(placed_list$y, best_y)
+        }
+
+        # draw curved arrow
+        arrows(x0, y0, best_x, best_y,
+               col    = col,
+               length = 0.07,
+               lwd    = 1.0,
+               angle  = 20)
+
+        # draw label
+        text(best_x, best_y,
+             labels = lbl,
+             col    = col,
+             cex    = 0.62,
+             font   = 2,
+             adj    = c(0.5, 0.5))
+    }
+    return(invisible(placed_list))
+}
+
+label_samples(sex_mismatch_females, "mismatch",       "#ff8c00", label_field, show_labels)
+label_samples(sex_mismatch_males,   "mismatch",       "#9400d3", label_field, show_labels)
+label_samples(X0_Turner,            "Turner X0",      "#0000cc", label_field, show_labels)
+label_samples(XXY_Klinefelter,      "Klinefelter XXY","#cc00cc", label_field, show_labels)
+label_samples(XXX_TripleX,          "Triple-X XXX",   "#00aeae", label_field, show_labels)
+
 # Males
 plot(df_mal$F, df_mal$YCOUNT,
      col  = "red",
@@ -135,6 +250,9 @@ legend("topright",
        lty    = c(NA, 2, 2),
        pch    = c(19, NA, NA),
        cex    = 0.8)
+
+label_samples(sex_mismatch_males, "mismatch",       "#9400d3", label_field, show_labels)
+label_samples(XXY_Klinefelter,    "Klinefelter XXY","#cc00cc", label_field, show_labels)
 
 # Females
 plot(df_femal$F, df_femal$YCOUNT,
@@ -155,6 +273,10 @@ legend("topright",
        lty    = c(NA, 2, 2, 2),
        pch    = c(19, NA, NA, NA),
        cex    = 0.8)
+
+label_samples(sex_mismatch_females, "mismatch",   "#ff8c00", label_field, show_labels)
+label_samples(X0_Turner,            "Turner X0",  "#0000cc", label_field, show_labels)
+label_samples(XXX_TripleX,          "Triple-X XXX","#00aeae", label_field, show_labels)
 
 dev.off()
 cat(sprintf("[SEXCHECK] Plots saved: %s\n\n", pdf_file))
