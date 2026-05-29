@@ -1,39 +1,29 @@
 #!/usr/bin/env Rscript
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
-### Step 5: Sex Check and Aneuploidy Detection
-###
+### Step 5: Sex Check and Aneuploidy Detection, Plotting Script
+### Version: 0.2.0
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
-### Date Created : 18/07/2025
-### Date Updated : 06/12/2026
+### Part of the Compass Genomics suite
 ##########################################################################
-### DESCRIPTION
-### Performs sex verification and chromosomal aneuploidy detection
-### using PLINK F-statistics and Y chromosome counts.
-###
-### Detects:
-###   Sex mismatches (both directions)
-###   Turner syndrome (X0)     -- high F, low Y in reported females
-###   Klinefelter syndrome (XXY) -- low F, high Y in reported males
-###   Triple-X syndrome (XXX)  -- extreme X heterozygosity in females
-###
-### Usage:
-###   Rscript plot_sexcheck.R \
-###       <input_dir> \
-###       <output_dir> \
-###       <f_stat_y_count_file> \
-###       <f_female_max> \
-###       <f_male_min> \
-###       <f_turner> \
-###       <f_klinefelter> \
-###       <f_xxx> \
-###       <y_use_mean> \
-###       <y_manual>
+# Performs sex verification and chromosomal aneuploidy detection
+# using PLINK F-statistics and Y chromosome counts.
+#
+# Detects:
+#   Sex mismatches (both directions)
+#   Turner syndrome (X0)       : high F, low Y in reported females
+#   Klinefelter syndrome (XXY) : low F, high Y in reported males
+#   Triple-X syndrome (XXX)    : extreme X heterozygosity in females
+#
+# Usage:
+#   Rscript plot_sexcheck.R <input_dir> <output_dir> <f_stat_y_count_file>
+#                           <f_female_max> <f_male_min> <f_turner>
+#                           <f_klinefelter> <f_xxx> <y_use_mean> <y_manual>
 ##########################################################################
 
 suppressPackageStartupMessages({
-    library(tidyverse)
+    library(ggplot2)
     library(data.table)
 })
 
@@ -72,7 +62,7 @@ if (y_use_mean != "YES") {
 cat("\n")
 
 ##########################################################################
-### LOAD DATA
+# LOAD DATA
 ##########################################################################
 
 cat(sprintf("[SEXCHECK] Loading: %s\n", f_stat_y_file))
@@ -90,7 +80,7 @@ if (y_use_mean == "YES") {
 }
 
 ##########################################################################
-### SUBSETS
+# SUBSETS
 ##########################################################################
 
 df_mal   <- df[df$PEDSEX == 1, ]
@@ -100,7 +90,7 @@ cat(sprintf("[SEXCHECK] Reported males   : %d\n", nrow(df_mal)))
 cat(sprintf("[SEXCHECK] Reported females : %d\n\n", nrow(df_femal)))
 
 ##########################################################################
-### PLOTS
+# PLOTS
 ##########################################################################
 
 cat("[SEXCHECK] Generating sex check plots...\n")
@@ -170,48 +160,48 @@ dev.off()
 cat(sprintf("[SEXCHECK] Plots saved: %s\n\n", pdf_file))
 
 ##########################################################################
-### DETECTION
+# DETECTION
 ##########################################################################
 
 cat("[SEXCHECK] Running detection...\n\n")
 
-### FEMALE SEX MISMATCH
-### Reported females with high F and high Y -- likely males
+# FEMALE SEX MISMATCH
+# sex mismatch females: reported females with high F and high Y, likely males
 sex_mismatch_females <- subset(df_femal,
     F > f_male_min & YCOUNT > y_threshold)
 
-### MALE SEX MISMATCH
-### Reported males with low F and low Y -- likely females
+# MALE SEX MISMATCH
+# sex mismatch males: reported males with low F and low Y, likely females
 sex_mismatch_males <- subset(df_mal,
     F < f_female_max & YCOUNT < y_threshold)
 
-### TURNER SYNDROME (X0)
-### Reported females with high F but low Y
-### High F in a female suggests only one X chromosome
+# TURNER SYNDROME (X0)
+# Reported females with high F but low Y
+# High F in a female suggests only one X chromosome
 X0_Turner <- subset(df_femal,
     F > f_turner & YCOUNT < y_threshold)
 
-### KLINEFELTER SYNDROME (XXY)
-### Reported males with low F but high Y
-### Low F in a male suggests extra X chromosome
+# KLINEFELTER SYNDROME (XXY)
+# Reported males with low F but high Y
+# Low F in a male suggests extra X chromosome
 XXY_Klinefelter <- subset(df_mal,
     F < f_klinefelter & YCOUNT > y_threshold)
 
-### TRIPLE-X SYNDROME (XXX)
-### Reported females with extreme X heterozygosity and low Y
-### Very negative F suggests extra X chromosome
+# TRIPLE-X SYNDROME (XXX)
+# Reported females with extreme X heterozygosity and low Y
+# Very negative F suggests extra X chromosome
 XXX_TripleX <- subset(df_femal,
     F < f_xxx & YCOUNT < y_threshold)
 
 ##########################################################################
-### REPORT
+# REPORT
 ##########################################################################
 
 report_file <- file.path(output_dir, "report_sex.mismatch_aneuploidies.txt")
 sink(report_file)
 
 cat("================================================================\n")
-cat("  CRISP -- STEP 5 SEX CHECK AND ANEUPLOIDY REPORT\n")
+cat("  CRISP: STEP 5 SEX CHECK AND ANEUPLOIDY REPORT\n")
 cat("  Comprehensive Robust Integrated SNP Processing\n")
 cat("================================================================\n\n")
 
@@ -287,7 +277,7 @@ sink()
 cat(sprintf("[SEXCHECK] Report written: %s\n\n", report_file))
 
 ##########################################################################
-### EXCLUSION LISTS
+# EXCLUSION LISTS
 ##########################################################################
 
 # Sex mismatch exclusion list (both directions combined)
