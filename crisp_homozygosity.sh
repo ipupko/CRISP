@@ -2,37 +2,44 @@
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
 ### CHUNK: Heterozygosity and Homozygosity (Step 6)
-###
+### Version: 0.2.0
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
+### Part of the Compass Genomics suite
 ##########################################################################
-### DESCRIPTION
-### Performs heterozygosity and homozygosity QC using PLINK output.
-### Reuses the .sexcheck file from Step 5 for X chromosome data.
-###
-### Steps:
-###   6a: PLINK --het (autosomal heterozygosity)
-###   6b: PLINK --homozyg (runs of homozygosity)
-###   6c: Run plot_homozygosity.R or plot_homozygosity.py
-###   6d: Apply exclusions (optional)
-###   6e: Write Step 6 report
-###
-### Outputs:
-###   Homozygosity_Runs_vs_Zscore.pdf
-###   report_homozygosity.txt
-###   outliers_high_het.txt
-###   outliers_excess_homo.txt
-###   outliers_combined.txt
-###
-### Thresholds (overridable in crisp_instructions.txt):
-###   HOM_Z_HIGH   Z-score upper threshold (excess homozygosity)
-###   HOM_Z_LOW    Z-score lower threshold (high heterozygosity)
+# Performs heterozygosity and homozygosity QC using PLINK output.
+# Reuses the .sexcheck file from the sex check step for X chromosome data.
+# The sex check step may be Step 3, 4 or 5 depending on STEP_ORDER.
+#
+# Steps:
+#   6a: PLINK --het (autosomal heterozygosity)
+#   6b: PLINK --homozyg (runs of homozygosity)
+#   6c: X chromosome het check if no sexcheck file found
+#   6d: Detection and plotting via plot_homozygosity.R or .py
+#   6e: Count outliers
+#   6f: Apply exclusions (optional)
+#   6g: Write Step 6 report
+#
+# Outputs:
+#   Homozygosity_Runs_vs_Zscore.pdf
+#   report_homozygosity.txt
+#   outliers_high_het.txt
+#   outliers_excess_homo.txt
+#   outliers_combined.txt
+#
+# Thresholds (overridable in crisp_instructions.txt):
+#   HOM_Z_HIGH : Z-score upper threshold (excess homozygosity)
+#   HOM_Z_LOW  : Z-score lower threshold (high heterozygosity)
+#
+# Usage:
+#   bash crisp_homozygosity.sh
+#   bash crisp_homozygosity.sh --config my_project.txt
 ##########################################################################
 
 set -euo pipefail
 
 ##########################################################################
-### LOAD CRISP FLAVOUR -- NON-NEGOTIABLE
+### LOAD CRISP FLAVOUR (NON-NEGOTIABLE)
 ##########################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,13 +47,37 @@ source "${SCRIPT_DIR}/scripts/_crisp_flavour.sh"
 _init_runtime
 
 ##########################################################################
-### LOCATE INSTRUCTION FILE
+### PARSE COMMAND LINE ARGUMENTS
 ##########################################################################
 
 INSTRUCTION_FILE="crisp_instructions.txt"
 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config)
+            INSTRUCTION_FILE="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: bash crisp_homozygosity.sh [--config <file>]"
+            echo "  --config <file>   Instruction file path (default: crisp_instructions.txt)"
+            exit 0
+            ;;
+        *)
+            echo "[CRISP] ERROR: Unknown argument: $1"
+            echo "[CRISP]        Usage: bash crisp_homozygosity.sh [--config <file>]"
+            exit 1
+            ;;
+    esac
+done
+
+##########################################################################
+### LOCATE INSTRUCTION FILE
+##########################################################################
+
 if [ ! -f "${INSTRUCTION_FILE}" ]; then
     echo "[CRISP] ERROR: Instruction file not found: ${INSTRUCTION_FILE}"
+    echo "[CRISP]        Usage: bash crisp_homozygosity.sh --config <path>"
     exit 1
 fi
 
@@ -79,15 +110,15 @@ PLINK1=$(parse_param "PLINK1_PATH" "plink")
 RSCRIPT=$(parse_param "RSCRIPT_PATH" "Rscript")
 PLOT_ENGINE=$(parse_param "PLOT_ENGINE" "R")
 
-# Resolve input from Step 5 clean output or Step 4
+# resolve input, use most recent clean output from sex check step,
+# falling back through step4 and step2 if not found
 STEP5_CLEAN=$(ls -t "${OUTPUT_DIR}/step5_sexcheck/${PROJECT_NAME}"*clean*.bed \
     2>/dev/null | head -1 | sed 's/\.bed$//')
 
 if [ -n "${STEP5_CLEAN}" ] && [ -f "${STEP5_CLEAN}.bed" ]; then
     INPUT_PREFIX="${STEP5_CLEAN}"
-    echo "[CRISP] Using Step 5 clean output as input."
+    echo "[CRISP] Using sex check step clean output as input."
 else
-    # Fall back to Step 4 output
     INPUT_PREFIX=$(ls -t "${OUTPUT_DIR}/step4_snprate/${PROJECT_NAME}"*maf*.bed \
         2>/dev/null | head -1 | sed 's/\.bed$//')
     if [ -z "${INPUT_PREFIX}" ]; then
@@ -96,32 +127,32 @@ else
     echo "[CRISP] Using Step 4 output as input."
 fi
 
-# Reuse sexcheck file from Step 5
-SEXCHECK_FILE="${OUTPUT_DIR}/step5_sexcheck/${PROJECT_NAME}_sexcheck.sexcheck"
+# reuse sexcheck file from whichever step ran sex check
+# searches across step3, step4 and step5 output dirs to support any STEP_ORDER
+SEXCHECK_FILE=""
+for step_dir in step5_sexcheck step4_snprate step3_callrate; do
+    candidate="${OUTPUT_DIR}/${step_dir}/${PROJECT_NAME}_sexcheck.sexcheck"
+    if [ -f "${candidate}" ]; then
+        SEXCHECK_FILE="${candidate}"
+        break
+    fi
+done
 
 ##########################################################################
 ### HEADER
 ##########################################################################
 
 echo ""
-echo "##########################################################################"
-echo "###                     CRISP - Version 0.1                           ###"
-echo "###        Comprehensive Robust Integrated SNP Processing            ###"
-echo "###                https://github.com/ipupko/CRISP                  ###"
-echo "##########################################################################"
-echo ""
 echo "[CRISP] ${PREP_MSG}"
 echo ""
 echo "[CRISP] Reading instruction file: ${INSTRUCTION_FILE}"
 echo ""
-echo "[CRISP] Parameters read from instruction file:"
-echo "        HOM_Z_HIGH        : ${HOM_Z_HIGH}"
-echo "        HOM_Z_LOW         : ${HOM_Z_LOW}"
-echo "        HOMO_EXCLUDE      : ${HOMO_EXCLUDE}"
-echo "        INPUT_PREFIX      : ${INPUT_PREFIX}"
-echo "        OUTPUT_DIR        : ${OUTPUT_DIR}"
-echo "        PROJECT_NAME      : ${PROJECT_NAME}"
-echo "        PLOT_ENGINE       : ${PLOT_ENGINE}"
+echo "[CRISP] Parameters:"
+echo "        HOM_Z_HIGH   : ${HOM_Z_HIGH}"
+echo "        HOM_Z_LOW    : ${HOM_Z_LOW}"
+echo "        HOMO_EXCLUDE : ${HOMO_EXCLUDE}"
+echo "        INPUT_PREFIX : ${INPUT_PREFIX}"
+echo "        PLOT_ENGINE  : ${PLOT_ENGINE}"
 echo ""
 
 ##########################################################################
@@ -131,7 +162,7 @@ echo ""
 for ext in .bed .bim .fam; do
     if [ ! -f "${INPUT_PREFIX}${ext}" ]; then
         echo "[CRISP] ERROR: Input file not found: ${INPUT_PREFIX}${ext}"
-        echo "[CRISP]        Ensure Step 5 (crisp_sexcheck.sh) has been run first."
+        echo "[CRISP]        Ensure the sex check step has been run first."
         exit 1
     fi
 done
@@ -141,17 +172,18 @@ echo ""
 
 SAMPLES=$(wc -l < "${INPUT_PREFIX}.fam" | tr -d '[:space:]')
 VARIANTS=$(wc -l < "${INPUT_PREFIX}.bim" | tr -d '[:space:]')
+
 echo "[CRISP] Samples  : ${SAMPLES}"
 echo "[CRISP] Variants : ${VARIANTS}"
 echo ""
 
-# Check sexcheck file from Step 5
-if [ ! -f "${SEXCHECK_FILE}" ]; then
-    echo "[CRISP] WARNING: Step 5 sexcheck file not found: ${SEXCHECK_FILE}"
-    echo "[CRISP]          Running fresh X chromosome het check..."
+# check sexcheck file from whichever step produced it
+if [ -z "${SEXCHECK_FILE}" ] || [ ! -f "${SEXCHECK_FILE}" ]; then
+    echo "[CRISP] WARNING: No sexcheck file found in step3/4/5 output directories."
+    echo "[CRISP]          Will run a fresh X chromosome check."
     RUN_X_HET=1
 else
-    echo "[OK]    Reusing Step 5 sexcheck file: ${SEXCHECK_FILE}"
+    echo "[OK]    Reusing sexcheck file: ${SEXCHECK_FILE}"
     RUN_X_HET=0
 fi
 echo ""
@@ -167,6 +199,11 @@ REPORT_FILE="${OUTPUT_DIR}/${PROJECT_NAME}_step6_homozygosity_report.txt"
 mkdir -p "${STEP6_DIR}"
 mkdir -p "${LOG_DIR}"
 
+# per-run temp folder, avoids /tmp collisions on HPC shared nodes
+CRISP_TMP="${OUTPUT_DIR}/.crisp_tmp_$$"
+mkdir -p "${CRISP_TMP}"
+trap "rm -rf ${CRISP_TMP}" EXIT
+
 ##########################################################################
 ### STEP 6a: AUTOSOMAL HETEROZYGOSITY
 ##########################################################################
@@ -178,9 +215,6 @@ echo ""
 
 HET_PREFIX="${STEP6_DIR}/${PROJECT_NAME}_het"
 LOG_6A="${LOG_DIR}/step6a_het.log"
-
-echo "[CRISP] Running: ${PLINK1} --bfile ${INPUT_PREFIX} --het --out ${HET_PREFIX}"
-echo ""
 
 ${PLINK1} \
     --bfile "${INPUT_PREFIX}" \
@@ -208,9 +242,6 @@ echo ""
 HOH_PREFIX="${STEP6_DIR}/${PROJECT_NAME}_homozyg"
 LOG_6B="${LOG_DIR}/step6b_homozyg.log"
 
-echo "[CRISP] Running: ${PLINK1} --bfile ${INPUT_PREFIX} --homozyg --out ${HOH_PREFIX}"
-echo ""
-
 ${PLINK1} \
     --bfile "${INPUT_PREFIX}" \
     --homozyg \
@@ -226,13 +257,13 @@ echo "[OK]    ROH file generated: ${HOH_PREFIX}.hom.indiv"
 echo ""
 
 ##########################################################################
-### STEP 6c (OPTIONAL): X CHROMOSOME HET IF STEP 5 FILE NOT FOUND
+### STEP 6c: X CHROMOSOME HET (FALLBACK IF STEP 5 FILE NOT FOUND)
 ##########################################################################
 
 if [ "${RUN_X_HET}" -eq 1 ]; then
 
     echo "##########################################################################"
-    echo "###              STEP 6c: X CHROMOSOME HETEROZYGOSITY                 ###"
+    echo "###           STEP 6c: X CHROMOSOME HET (FALLBACK)                   ###"
     echo "##########################################################################"
     echo ""
 
@@ -305,9 +336,9 @@ N_HIGH_HET=0
 N_EXCESS_HOMO=0
 N_COMBINED=0
 
-[ -f "${HET_EXCL}" ]      && N_HIGH_HET=$(wc -l < "${HET_EXCL}"      | tr -d '[:space:]')
-[ -f "${HOMO_EXCL}" ]     && N_EXCESS_HOMO=$(wc -l < "${HOMO_EXCL}"  | tr -d '[:space:]')
-[ -f "${COMBINED_EXCL}" ] && N_COMBINED=$(wc -l < "${COMBINED_EXCL}" | tr -d '[:space:]')
+[ -f "${HET_EXCL}" ]      && N_HIGH_HET=$(wc -l    < "${HET_EXCL}"      | tr -d '[:space:]')
+[ -f "${HOMO_EXCL}" ]     && N_EXCESS_HOMO=$(wc -l  < "${HOMO_EXCL}"     | tr -d '[:space:]')
+[ -f "${COMBINED_EXCL}" ] && N_COMBINED=$(wc -l     < "${COMBINED_EXCL}" | tr -d '[:space:]')
 
 echo "[CRISP] High heterozygosity outliers : ${N_HIGH_HET}"
 echo "[CRISP] Excess homozygosity outliers : ${N_EXCESS_HOMO}"
@@ -349,7 +380,7 @@ if [ "${HOMO_EXCLUDE^^}" = "YES" ] && \
     echo ""
 
 else
-    echo "[CRISP] HOMO_EXCLUDE = NO -- outliers retained in dataset."
+    echo "[CRISP] HOMO_EXCLUDE = NO, outliers retained in dataset."
     echo ""
 fi
 
@@ -359,7 +390,7 @@ fi
 
 {
     echo "=================================================================="
-    echo "  CRISP -- STEP 6 HETEROZYGOSITY AND HOMOZYGOSITY REPORT"
+    echo "  CRISP: STEP 6 HETEROZYGOSITY AND HOMOZYGOSITY REPORT"
     echo "  Comprehensive Robust Integrated SNP Processing"
     echo "=================================================================="
     echo "  Project      : ${PROJECT_NAME}"
@@ -367,12 +398,12 @@ fi
     echo "  Input prefix : ${INPUT_PREFIX}"
     echo "------------------------------------------------------------------"
     echo "  PARAMETERS"
-    echo "  HOM_Z_HIGH   : ${HOM_Z_HIGH} (excess homozygosity threshold)"
-    echo "  HOM_Z_LOW    : ${HOM_Z_LOW} (high heterozygosity threshold)"
+    echo "  HOM_Z_HIGH   : ${HOM_Z_HIGH}  (excess homozygosity threshold)"
+    echo "  HOM_Z_LOW    : ${HOM_Z_LOW}  (high heterozygosity threshold)"
     echo "  HOMO_EXCLUDE : ${HOMO_EXCLUDE}"
     echo "------------------------------------------------------------------"
     echo "  OUTLIER COUNTS"
-    echo "  High heterozygosity (Z < ${HOM_Z_LOW}) : ${N_HIGH_HET}"
+    echo "  High heterozygosity (Z < ${HOM_Z_LOW})  : ${N_HIGH_HET}"
     echo "  Excess homozygosity (Z > ${HOM_Z_HIGH}) : ${N_EXCESS_HOMO}"
     echo "  Combined outliers                        : ${N_COMBINED}"
     echo "------------------------------------------------------------------"
