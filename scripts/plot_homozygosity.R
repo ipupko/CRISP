@@ -1,36 +1,32 @@
 #!/usr/bin/env Rscript
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
-### Step 6: Heterozygosity and Homozygosity
-###
+### Step 6: Heterozygosity and Homozygosity, Plotting Script
+### Version: 0.2.0
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
+### Part of the Compass Genomics suite
 ##########################################################################
-### DESCRIPTION
-### Performs heterozygosity and homozygosity QC using PLINK output.
-### Detects outliers using Z-score thresholds on autosomal F-statistics
-### and visualises total runs of homozygosity (ROH) against Z-scores.
-###
-### Inputs:
-###   .sexcheck file   -- X chromosome F-statistics (from Step 5)
-###   .het file        -- autosomal heterozygosity
-###   .hom.indiv file  -- runs of homozygosity per individual
-###
-### Outputs:
-###   Homozygosity_Runs_vs_Zscore.pdf    ROH vs Z-score scatter plot
-###   report_homozygosity.txt            Detailed text report
-###   outliers_high_het.txt              High heterozygosity exclusions
-###   outliers_excess_homo.txt           Excess homozygosity exclusions
-###   outliers_combined.txt              Combined exclusion list
-###
-### Usage:
-###   Rscript plot_homozygosity.R \
-###       <output_dir> \
-###       <sexcheck_file> \
-###       <het_file> \
-###       <hom_indiv_file> \
-###       <z_high> \
-###       <z_low>
+# Performs heterozygosity and homozygosity QC using PLINK output.
+# Detects outliers using Z-score thresholds on autosomal F-statistics
+# and visualises total runs of homozygosity (ROH) against Z-scores.
+#
+# Inputs:
+#   .sexcheck file   : X chromosome F-statistics (sex check step)
+#   .het file        : autosomal heterozygosity
+#   .hom.indiv file  : runs of homozygosity per individual
+#
+# Outputs:
+#   Homozygosity_Runs_vs_Zscore.pdf    ROH vs Z-score scatter plot
+#   report_homozygosity.txt            Detailed text report
+#   outliers_high_het.txt              High heterozygosity exclusions
+#   outliers_excess_homo.txt           Excess homozygosity exclusions
+#   outliers_combined.txt              Combined exclusion list
+#
+# Usage:
+#   Rscript plot_homozygosity.R <output_dir> <sexcheck_file>
+#                               <het_file> <hom_indiv_file>
+#                               <z_high> <z_low>
 ##########################################################################
 
 suppressPackageStartupMessages({
@@ -182,7 +178,7 @@ p <- ggplot(autosome_het_roh,
                         name   = "Category") +
     scale_x_continuous(labels = label_comma()) +
     labs(
-        title    = "CRISP: Step 6 -- Total Homozygosity Runs vs Homozygosity Z-score",
+        title    = "CRISP: Step 6: Total Homozygosity Runs vs Homozygosity Z-score",
         subtitle = sprintf(
             "Z > %.1f: %d excess homozygosity  |  Z < %.1f: %d high heterozygosity  |  %d normal",
             z_high, n_excess_homo, z_low, n_high_het, n_normal
@@ -214,7 +210,7 @@ report_file <- file.path(output_dir, "report_homozygosity.txt")
 sink(report_file)
 
 cat("================================================================\n")
-cat("  CRISP -- STEP 6 HETEROZYGOSITY AND HOMOZYGOSITY REPORT\n")
+cat("  CRISP: STEP 6 HETEROZYGOSITY AND HOMOZYGOSITY REPORT\n")
 cat("  Comprehensive Robust Integrated SNP Processing\n")
 cat("================================================================\n\n")
 
