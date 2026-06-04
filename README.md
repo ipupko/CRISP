@@ -17,12 +17,12 @@ The following chunks are built and tested:
 | `crisp_upload_chunk.sh` | Step 1: File validation and MD5 | Complete |
 | `crisp_convert.sh` | Step 2: Format conversion | Complete |
 | `crisp_callrate.sh` | Step 3: Sample call rate | Complete |
-| `crisp_snprate.sh` | Step 4: Variant call rate, monomorphic, MAF | Under review |
-| `crisp_sexcheck.sh` | Step 5: Sex check and aneuploidy detection | Under review |
-| `crisp_homozygosity.sh` | Step 6: Heterozygosity and homozygosity | Under review |
-| `crisp_relatedness.sh` | Step 7: Relatedness and duplicates | In progress |
-| `crisp_hwe.sh` | Step 8: HWE filtering | Pending |
-| `crisp_pca.sh` | Step 9: PCA and ancestry | Pending |
+| `crisp_snprate.sh` | Step 4: Variant call rate, monomorphic, MAF | Complete |
+| `crisp_sexcheck.sh` | Step 5: Sex check and aneuploidy detection | Complete |
+| `crisp_homozygosity.sh` | Step 6: Heterozygosity and homozygosity | Complete |
+| `crisp_relatedness.sh` | Step 7: Relatedness and duplicates | Complete |
+| `crisp_hwe.sh` | Step 8: HWE filtering | Under Review |
+| `crisp_pca.sh` | Step 9: PCA and ancestry | In Progress |
 | `crisp_amend.sh` | Step 10: Amendments and clean dataset | Pending |
 | `crisp_report.sh` | Step 11: End-to-end summary report | Pending |
 
