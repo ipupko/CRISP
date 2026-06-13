@@ -2,9 +2,11 @@
 ##########################################################################
 ### CRISP - Comprehensive Robust Integrated SNP Processing
 ### CHUNK: Sample Call Rate (Step 3)
-### Version: 0.2.0
+### Version: 0.3.5
 ### Developed by Igor Pupko
 ### https://github.com/ipupko/CRISP
+### Part of the Compass Genomics suite
+### Date Updated : 13/06/2026
 ##########################################################################
 # Filters samples based on genotype missingness rate using PLINK
 # --mind flag.
@@ -46,6 +48,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/scripts/_crisp_flavour.sh"
 _init_runtime
+
+# Print a clear CRISP-style error if any command fails under set -e
+trap 'echo "[CRISP] ERROR: Step 3 failed at line ${LINENO}. Check logs in ${LOG_DIR:-./results/logs}."' ERR
 
 ##########################################################################
 ### PARSE COMMAND LINE ARGUMENTS
@@ -109,7 +114,14 @@ MIND=$(parse_param "MIND" "0.05")
 SAMPLE_CUSTOM_TIERS=$(parse_param "SAMPLE_CUSTOM_TIERS" "")
 PLINK1=$(parse_param "PLINK1_PATH" "plink")
 RSCRIPT=$(parse_param "RSCRIPT_PATH" "Rscript")
+PYTHON3=$(parse_param "PYTHON3_PATH" "python3")
 PLOT_ENGINE=$(parse_param "PLOT_ENGINE" "R")
+PLOT_COLOUR_MODE=$(parse_param "PLOT_COLOUR_MODE" "STANDARD")
+PLOT_BACKGROUND=$(parse_param "PLOT_BACKGROUND" "")
+
+# resolve full CRISP_PAL_* palette (handles NIGHT -> dark background default)
+_crisp_palette "${PLOT_COLOUR_MODE}" "${PLOT_BACKGROUND}"
+PLOT_BACKGROUND="${CRISP_PAL_BACKGROUND}"
 
 # use Step 2 output, fall back to naming convention if not set
 CONVERTED_PREFIX=$(parse_param "CONVERTED_PREFIX" "")
@@ -137,6 +149,8 @@ echo "        OUTPUT_DIR        : ${OUTPUT_DIR}"
 echo "        PROJECT_NAME      : ${PROJECT_NAME}"
 echo "        KEEP_INTERMEDIATE : ${KEEP_INTERMEDIATE}"
 echo "        PLOT_ENGINE       : ${PLOT_ENGINE}"
+echo "        PLOT_COLOUR_MODE  : ${CRISP_PAL_MODE}"
+echo "        PLOT_BACKGROUND   : ${PLOT_BACKGROUND}"
 echo ""
 
 ##########################################################################
@@ -237,12 +251,30 @@ generate_plots() {
     local imiss_files=("$@")
 
     if [ "${PLOT_ENGINE^^}" = "R" ]; then
+        CRISP_PAL_PASS="${CRISP_PAL_PASS}" \
+        CRISP_PAL_FAIL="${CRISP_PAL_FAIL}" \
+        CRISP_PAL_BG="${CRISP_PAL_BG}" \
+        CRISP_PAL_PANEL="${CRISP_PAL_PANEL}" \
+        CRISP_PAL_TEXT="${CRISP_PAL_TEXT}" \
+        CRISP_PAL_SUBTEXT="${CRISP_PAL_SUBTEXT}" \
+        CRISP_PAL_GRID="${CRISP_PAL_GRID}" \
+        CRISP_PAL_MODE="${CRISP_PAL_MODE}" \
+        CRISP_PAL_BACKGROUND="${CRISP_PAL_BACKGROUND}" \
         ${RSCRIPT} "${SCRIPT_DIR}/scripts/plot_callrate.R" \
             "${mode}" "${MIND}" "${plot_dir}" \
             "${imiss_files[@]}" \
             >> "${log_file}" 2>&1
     elif [ "${PLOT_ENGINE^^}" = "PYTHON" ]; then
-        python3 "${SCRIPT_DIR}/scripts/plot_callrate.py" \
+        CRISP_PAL_PASS="${CRISP_PAL_PASS}" \
+        CRISP_PAL_FAIL="${CRISP_PAL_FAIL}" \
+        CRISP_PAL_BG="${CRISP_PAL_BG}" \
+        CRISP_PAL_PANEL="${CRISP_PAL_PANEL}" \
+        CRISP_PAL_TEXT="${CRISP_PAL_TEXT}" \
+        CRISP_PAL_SUBTEXT="${CRISP_PAL_SUBTEXT}" \
+        CRISP_PAL_GRID="${CRISP_PAL_GRID}" \
+        CRISP_PAL_MODE="${CRISP_PAL_MODE}" \
+        CRISP_PAL_BACKGROUND="${CRISP_PAL_BACKGROUND}" \
+        ${PYTHON3} "${SCRIPT_DIR}/scripts/plot_callrate.py" \
             "${mode}" "${MIND}" "${plot_dir}" \
             "${imiss_files[@]}" \
             >> "${log_file}" 2>&1
@@ -272,11 +304,6 @@ run_simple() {
         --out "${OUT_PREFIX}" \
         >> "${LOG_FILE}" 2>&1
 
-    if [ $? -ne 0 ]; then
-        echo "[CRISP] ERROR: PLINK --mind failed. Check log: ${LOG_FILE}"
-        exit 1
-    fi
-
     SAMPLES_AFTER=$(wc -l < "${OUT_PREFIX}.fam" | tr -d '[:space:]')
     SAMPLES_REMOVED=$((SAMPLES_BEFORE - SAMPLES_AFTER))
 
@@ -298,6 +325,8 @@ run_simple() {
     echo ""
 
     # exclusion list
+    # Format matches PLINK .irem: whitespace-separated FID IID per line,
+    # no header. An empty file means zero samples were excluded.
     EXCLUSION_LIST="${OUTPUT_DIR}/${PROJECT_NAME}_exclusions_step3.txt"
     IREM_FILE="${OUT_PREFIX}.irem"
     if [ -f "${IREM_FILE}" ] && [ -s "${IREM_FILE}" ]; then
@@ -354,11 +383,6 @@ run_multipass() {
             --out "${OUT_PREFIX}" \
             >> "${LOG_FILE}" 2>&1
 
-        if [ $? -ne 0 ]; then
-            echo "[CRISP] ERROR: PLINK --mind ${THRESHOLD} failed. Check log: ${LOG_FILE}"
-            exit 1
-        fi
-
         SAMPLES_AFTER_PASS=$(wc -l < "${OUT_PREFIX}.fam" | tr -d '[:space:]')
         REMOVED_THIS_PASS=$((SAMPLES_THIS_PASS - SAMPLES_AFTER_PASS))
         TOTAL_REMOVED=$((TOTAL_REMOVED + REMOVED_THIS_PASS))
@@ -392,6 +416,12 @@ run_multipass() {
 
         CURRENT_INPUT="${OUT_PREFIX}"
     done
+
+    # deduplicate cumulative exclusion list (a sample could in principle
+    # appear at multiple pass boundaries; FID/IID pairs are kept unique)
+    if [ -s "${CUMULATIVE_EXCL}" ]; then
+        sort -u "${CUMULATIVE_EXCL}" -o "${CUMULATIVE_EXCL}"
+    fi
 
     SAMPLES_FINAL="${SAMPLES_PER_PASS[$((n-1))]}"
 
@@ -512,6 +542,9 @@ write_report() {
         echo "  Exclusion list    : ${OUTPUT_DIR}/${PROJECT_NAME}_exclusions_step3.txt"
         echo "  Plots             : ${STEP3_DIR}"
         echo "  Log               : ${LOG_DIR}"
+        echo "  Plot engine       : ${PLOT_ENGINE}"
+        echo "  Plot colour mode  : ${CRISP_PAL_MODE}"
+        echo "  Plot background   : ${CRISP_PAL_BACKGROUND}"
         echo "------------------------------------------------------------------"
         echo "  PLOTS GENERATED"
         if [ "${mode}" = "SIMPLE" ]; then
