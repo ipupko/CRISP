@@ -1,6 +1,6 @@
 #!/bin/bash
 ##########################################################################
-# ##############################################################
+#
 #   .oooooo.   ooooooooo.   ooooo  .oooooo..o ooooooooo.
 #  d8P'  `Y8b  `888   `Y88. `888' d8P'    `Y8 `888   `Y88.
 # 888           888   .d88'  888  Y88bo.       888   .d88'
@@ -8,8 +8,7 @@
 # 888           888`88b.     888       `"Y88b  888
 # `88b    ooo   888  `88b.   888  oo     .d8P  888
 #  `Y8bood8P'  o888o  o888o o888o 8""88888P'  o888o
-# ##############################################################
-##########################################################################
+#
 # CRISP - Comprehensive Robust Integrated SNP Processing
 # CHUNK: Sex Check and Aneuploidy Detection (Step 5)
 # Version: 0.4.0
@@ -48,7 +47,7 @@
 #   SEX_Y_MANUAL       : manual Y count threshold if not using the median
 #
 # v0.4.0:
-#   - NEW: SEXCHECK_ROUTE_ANEUPLOIDIES - when YES, Turner/Klinefelter/
+#   - NEW: SEXCHECK_ROUTE_ANEUPLOIDIES — when YES, Turner/Klinefelter/
 #     Triple-X samples are extracted into per-type PLINK sub-cohorts
 #     (both Step 4 QC'd and pre-QC raw genotypes, compressed) instead of
 #     being discarded. These are confirmed karyotype calls, valuable to
@@ -143,11 +142,15 @@ PLINK1=$(parse_param "PLINK1_PATH" "plink")
 RSCRIPT=$(parse_param "RSCRIPT_PATH" "Rscript")
 PLOT_ENGINE=$(parse_param "PLOT_ENGINE" "R")
 
-# FIX #1: parse PLOT_COLOUR_MODE and forward palette env vars to plot scripts.
-# Without this, _crisp_palette is never called and CRISP_PAL_* variables are
-# never set, making COLOURBLIND mode silently non-functional.
+# Parse PLOT_COLOUR_MODE and PLOT_BACKGROUND, forward both to _crisp_palette.
+# _crisp_palette is shared infrastructure (sourced via _crisp_flavour.sh) and
+# already supports STANDARD / COLOURBLIND / NIGHT modes plus an orthogonal
+# LIGHT / DARK background, established in Step 3. Step 5 previously only
+# ever called _crisp_palette with the mode argument, silently dropping
+# PLOT_BACKGROUND and never reaching NIGHT mode's dark-background default.
 PLOT_COLOUR_MODE=$(parse_param "PLOT_COLOUR_MODE" "STANDARD")
-_crisp_palette "${PLOT_COLOUR_MODE}"
+PLOT_BACKGROUND=$(parse_param "PLOT_BACKGROUND" "")
+_crisp_palette "${PLOT_COLOUR_MODE}" "${PLOT_BACKGROUND}"
 
 # FIX #2: parse label parameters so they can be forwarded to plot scripts.
 # These were parsed from crisp_instructions.txt but never read, so the
@@ -235,6 +238,7 @@ echo "        SEX_Y_MANUAL                : ${SEX_Y_MANUAL}"
 echo "        INPUT_PREFIX                : ${INPUT_PREFIX}"
 echo "        PLOT_ENGINE                 : ${PLOT_ENGINE}"
 echo "        PLOT_COLOUR_MODE            : ${PLOT_COLOUR_MODE}"
+echo "        PLOT_BACKGROUND              : ${CRISP_PAL_BACKGROUND}"
 echo ""
 
 ##########################################################################
@@ -838,6 +842,7 @@ fi
     echo "  SEX_Y_MANUAL                : ${SEX_Y_MANUAL}"
     fi
     echo "  PLOT_COLOUR_MODE            : ${PLOT_COLOUR_MODE}"
+    echo "  PLOT_BACKGROUND              : ${CRISP_PAL_BACKGROUND}"
     echo "------------------------------------------------------------------"
     echo "  DETECTION RESULTS"
     echo "  Total samples               : ${SAMPLES}"
