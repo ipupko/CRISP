@@ -1,6 +1,5 @@
 <img width="1408" height="768" alt="Firefly_Logo for CRISP (Comprehensive Robust Integrated SNP Processing), a genomic data quali 726701" src="https://github.com/user-attachments/assets/dda35904-238b-414b-b2b2-9579f60a6256" />
 
-# CRISP Roadmap
 **Comprehensive Robust Integrated SNP Processing**
 *Part of the Compass Genomics suite*
 
@@ -179,10 +178,8 @@ MIT. Free to use, modify, and distribute. Always.
 ## Contact
 
 **Dr Igor Pupko**
-Founder and Director, Compass Genomics Foundation
-igor@compassgx.com
-compassgx.com
+igor.pupko@outlook.com
 
 ---
 
-*CRISP is part of the Aletheia programme. Revealing the mechanisms of biology.*
+*CRISP is part of the Aletheia programme.*
