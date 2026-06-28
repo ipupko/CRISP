@@ -94,7 +94,7 @@ Every step writes a log, produces a QC report section, and records its decisions
 
 **LaTeX Report.** Coming as soon as possible. Probably after version 1.2 is running.
 
-**Graphical Intreface and Real-Time data QC parameter alterantion.** Planned for Version 2.
+**Graphical Intreface and Real-Time data QC parameter alteration.** Planned for Version 2.
 
 ---
 
