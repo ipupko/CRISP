@@ -10,7 +10,7 @@ If you are an experienced statistical geneticist, CRISP gives you a reproducible
 
 If you are newer to genomic QC, the instruction file guides you through what parameters to set and why. The reports tell you what happened at each step. The PDF manual (coming with v1.0) explains the reasoning behind every design decision. You do not need to be an expert to run CRISP correctly.
 
-If you are an novice or expert designing your study CRISP will aid you in your endeavour by showing you examples of studies that were conducted in ther past.
+If you are a novice or expert designing your study CRISP will aid you in your endeavour by showing you examples of studies that were conducted in ther past.
 
 If you are a clinician or translational researcher who needs clean genotype data but does not want to become a bioinformatician, CRISP is designed for you too. One instruction file, one command, one report you can attach to a grant application or a publication. The technical complexity is inside the pipeline, not in front of it.
 
