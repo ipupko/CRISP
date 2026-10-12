@@ -35,7 +35,7 @@ Designed and tested on synthetic data, not yet committed: gnomAD population-spec
 
 Note: the version sections below were written earlier and still use the old step numbers in places (for example "Step 7: Relatedness"). They will be renumbered once the step order is settled.
 
--------|------|--------|
+|-------|------|--------|
 | `crisp_upload_chunk.sh` | Step 1: File validation and MD5 | Complete |
 | `crisp_convert.sh` | Step 2: Format conversion | Complete |
 | `crisp_callrate.sh` | Step 3: Sample call rate | Complete |
