@@ -11,6 +11,7 @@ Community feedback and contributions are welcome at every stage.
 ---
 
 ## Current Status: Active Development (pre v1.0) and 1KG Chromosome 21 Simulation
+## If there is a pause in upload that means there is local test on my machine. Feel free to drop email for suggestions or improvements.  
 
 Steps 1 to 9 are committed. Steps 10 to 12 are not started. Numbering follows the script headers in the repository; the table below replaces the earlier plan, which used a different order.
 
