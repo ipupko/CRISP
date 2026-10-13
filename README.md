@@ -778,8 +778,8 @@ inclusion in manuscript methods sections.
 Igor Pupko
 
 **Co-authors (tentative)**
-Dr Jared Maina
-Dr Vincent Pascat
+-
+-
 
 *Co-authorship subject to confirmation. Contributions and authorship
 will be formalised prior to the JOSS paper submission at v1.1.*
