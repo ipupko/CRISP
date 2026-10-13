@@ -149,6 +149,11 @@ Subpopulation codes:
 - EAS : CHN, JPT, KHV, CDX, CHS, CHB
 - AMR : MXL, PUR, CLM, PEL
 
+Custom for further development:
+
+-SAS(IND): GJT (Gandhinagar/ Gujarat), JPR (Jaipur/Rajistan)
+
+
 **Export step (Step 11b): Output format conversion**
 
 After the final amended clean dataset is produced, CRISP offers
